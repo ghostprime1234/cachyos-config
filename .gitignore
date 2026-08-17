@@ -22,3 +22,4 @@ sync_status.txt
 
 # Local archives/snapshots if created inside repo
 *.tar.gz
+hosts/rsync_output.txt
