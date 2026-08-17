@@ -8,15 +8,14 @@ echo "Configuring Fedora desktop for NVIDIA, gaming, and university workflow..."
 # NVIDIA + CUDA support from RPM Fusion.
 # Assumes RPM Fusion free/nonfree repos were already enabled by setup-fedora.sh.
 sudo dnf install -y \
-  akmod-nvidia \
-  xorg-x11-drv-nvidia-cuda \
-  xorg-x11-drv-nvidia-cuda-libs \
-  nvidia-settings \
-  kernel-devel \
-  kernel-headers \
-  gcc \
-  make \
-  direnv
+    akmod-nvidia \
+    xorg-x11-drv-nvidia-cuda \
+    xorg-x11-drv-nvidia-cuda-libs \
+    nvidia-settings \
+    kernel-devel \
+    kernel-headers \
+    gcc \
+    make
 
 echo "Configuring NVIDIA power management..."
 
@@ -27,9 +26,9 @@ fi
 # These services exist once the NVIDIA RPM Fusion packages are installed.
 sudo systemctl enable nvidia-hibernate.service nvidia-resume.service nvidia-suspend.service 2>/dev/null || true
 
-echo "Creating local university folders..."
-mkdir -p "/mnt/Data/University"
-mkdir -p "$HOME/Synology_Home"
+echo "Creating local university folder..."
+sudo mkdir -p "/mnt/Data/University"
+sudo chown "$USER:$USER" "/mnt/Data/University"
 
 if command -v powerprofilesctl >/dev/null 2>&1; then
   powerprofilesctl set performance || true
@@ -55,12 +54,5 @@ echo "Regenerating initramfs..."
 sudo dracut --force || true
 
 echo
-echo "NVIDIA setup is complete."
-echo "A reboot is recommended so Fedora loads the NVIDIA driver cleanly."
-read -rp "Reboot now? [y/N]: " REBOOT_NOW
-
-if [[ "$REBOOT_NOW" =~ ^[Yy]$ ]]; then
-  sudo reboot
-else
-  echo "Reboot skipped. Please reboot later before testing gaming/Proton/NVIDIA workloads."
-fi
+echo "NVIDIA setup complete."
+echo "A reboot is recommended before testing NVIDIA, gaming, or Proton workloads."

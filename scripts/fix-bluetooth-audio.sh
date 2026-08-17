@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 echo "======================================================"
-echo " Starting CachyOS Bluetooth Audio Optimization Script"
+echo "Starting Bluetooth audio configuration..."
 echo "======================================================"
 
 # 1. Create directory structures if they don't exist

@@ -8,25 +8,14 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
-source /usr/share/cachyos-zsh-config/cachyos-config.zsh
-source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-
-# 0. CACHYOS INTEGRATION
-# Note: Zsh doesn't use the fish-config, but CachyOS has zsh defaults too.
-[[ -f /usr/share/zsh/scripts/antidote/antidote.zsh ]] && source /usr/share/zsh/scripts/antidote/antidote.zsh
-
 # 1. ALIASES
 alias resource='source ~/.zshrc'
 alias zshrc='micro ~/.zshrc'
 alias obsidian='obsidian --enable-features=UseOzonePlatform --ozone-platform=wayland'
 
-alias mds-bak="sh ~/scripts/mds_backup.sh"
-alias uni-pull='rsync -avzu --no-perms --no-owner --no-group --exclude=".conda/" /mnt/proxmox_uni/ ~/Documents/University/'
-alias uni-push='rsync -avzu --no-perms --no-owner --no-group --exclude=".conda/" ~/Documents/University/ /mnt/Synology_Home/Documents/University/University/'
-alias uni-status='mutagen sync list && echo "--- Hub Connectivity ---" && ping -c 1 100.70.100.118 | grep "time="'
+alias mds-bak="$HOME/cachyos-config/scripts/mds_backup.sh"
+alias mds-pull="$HOME/cachyos-config/scripts/mds_pull.sh"
 alias unisync='/usr/local/bin/unisync'
-alias unilog='tail -f ~/cachyos-config/sync.log'
 
 alias lab-push="~/Big-Data-Cluster/infra/sync_labs.sh --push"
 alias lab-pull="~/Big-Data-Cluster/infra/sync_labs.sh --pull"

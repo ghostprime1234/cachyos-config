@@ -5,10 +5,6 @@ set -euo pipefail
 
 echo "Tuning Fedora laptop for battery and data science mobility..."
 
-sudo dnf install -y \
-  direnv \
-  power-profiles-daemon
-
 sudo systemctl enable --now power-profiles-daemon
 
 echo "Checking IdeaPad battery conservation support..."
@@ -41,7 +37,7 @@ if command -v powerprofilesctl >/dev/null 2>&1; then
   powerprofilesctl set balanced || true
 fi
 
+echo "Creating local university folder..."
 mkdir -p "$HOME/Documents/University"
-mkdir -p "$HOME/Synology_Home"
 
 echo "Laptop hardware configuration complete."

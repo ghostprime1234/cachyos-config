@@ -1,40 +1,51 @@
-#!/bin/bash
-# Michael's MDS Pull Script: Fetch latest files from Mini PC to local machine
+#!/usr/bin/env bash
+# Pull the latest university files from the mini PC.
 
-# --- DYNAMIC LOCAL PATH DETECTION ---
-if [ -d "/mnt/Data/University/" ]; then
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+EXCLUDES="$SCRIPT_DIR/rsync-excludes.txt"
+
+# ------------------------------------------------------------
+# Local path detection
+# ------------------------------------------------------------
+
+if [[ -d "/mnt/Data/University/" ]]; then
+    # Desktop
     LOCAL_TARGET="/mnt/Data/University/"
-    EXCLUDES="$SCRIPT_DIR/rsync-excludes.txt"
-elif [ -d "$HOME/Documents/University/" ]; then
+elif [[ -d "$HOME/Documents/University/" ]]; then
+    # Laptop
     LOCAL_TARGET="$HOME/Documents/University/"
-    EXCLUDES="$SCRIPT_DIR/rsync-excludes.txt"
 else
-    echo "⚠ CRITICAL ERROR: Local University path does not exist. Create it first!"
+    echo "ERROR: Local University directory does not exist."
     exit 1
 fi
 
-# --- DYNAMIC ROUTING (Local LAN vs Tailscale) ---
-if ping -c 3 -W 2 192.168.8.2 > /dev/null 2>&1; then
-    echo "🏠 Connected to home network. Using fast direct IP."
-    SSH_OPTS="-i /home/michael/.ssh/id_ed25519_desktop" # Fixed key path too
-    REMOTE_SOURCE="michael@192.168.8.2:/home/michael/University/"
+# ------------------------------------------------------------
+# Server routing
+# ------------------------------------------------------------
+
+# Prefer the LAN connection when at home.
+if ping -c 1 -W 1 192.168.8.2 >/dev/null 2>&1; then
+    echo "Home network detected. Using LAN connection."
+    REMOTE_HOST="michael@192.168.8.2"
 else
-    echo "🚗 Away from home. Routing pull via Tailscale tunnel."
-    SSH_OPTS="-i /home/michael/.ssh/id_ed25519_desktop"
-    REMOTE_SOURCE="michael@pve:/home/michael/University/"
+    echo "LAN server unavailable. Using Tailscale/SSH configuration."
+    REMOTE_HOST="server"
 fi
 
-echo "--- Pulling latest files from Mini PC to Local Machine ---"
-# -a (archive), -u (update: only grab files newer on remote or missing locally), -v (verbose)
+REMOTE_SOURCE="$REMOTE_HOST:/home/michael/University/"
+
+# ------------------------------------------------------------
+# Pull
+# ------------------------------------------------------------
+
+echo "Pulling latest files from Mini PC..."
+
 rsync -auv \
-    -e "ssh $SSH_OPTS" \
     --exclude-from="$EXCLUDES" \
     --exclude="snapshots/" \
-    "$REMOTE_SOURCE" "$LOCAL_TARGET"
+    "$REMOTE_SOURCE" \
+    "$LOCAL_TARGET"
 
-if [ $? -eq 0 ]; then
-    echo "✅ Pull complete! Your local machine is now up to date."
-else
-    echo "⚠ CRITICAL ERROR: Pull failed!"
-    exit 1
-fi
+echo "Pull complete."
