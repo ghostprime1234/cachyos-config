@@ -7,7 +7,9 @@ secrets.sh
 # Logs
 *.log
 push_log.txt
-.setup-cachyos.sh.kate-swp
+*.swp
+*.swo
+*~
 
 # OS Junk
 .DS_Store
