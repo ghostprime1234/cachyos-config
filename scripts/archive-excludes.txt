@@ -1,0 +1,30 @@
+# Backup-system directories
+./snapshots
+./archives
+./legacy_full_snapshots
+./snapshot
+
+# Temporary and incomplete files
+*.partial
+*.tmp
+*.temp
+.~lock.*
+*.swp
+*.swo
+
+# Python and application caches
+__pycache__
+*.pyc
+.cache
+
+# IDE/build output
+.idea
+.vscode
+node_modules
+build
+dist
+target
+cmake-build-*
+
+# CSC6002 large reproducible dataset
+./USQ/Masters of Data Science/Year 1/Trimester 2/CSC6002 - Big Data Management/Assessments/61499v001/data/300k

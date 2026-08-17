@@ -22,10 +22,13 @@ else
 fi
 
 # 2. Hardware-Specific Scripts
-if [[ "$CHASSIS" == "desktop" && -f "./hosts/desktop.sh" ]]; then
-    chmod +x ./hosts/desktop.sh && ./hosts/desktop.sh
-elif [[ "$CHASSIS" == "laptop" && -f "./hosts/laptop.sh" ]]; then
-    chmod +x ./hosts/laptop.sh && ./hosts/laptop.sh
+HOST_SCRIPT="./hosts/cachyos/${CHASSIS}.sh"
+
+if [[ -f "$HOST_SCRIPT" ]]; then
+  chmod +x "$HOST_SCRIPT"
+  "$HOST_SCRIPT"
+else
+  echo "No CachyOS host script found for chassis: $CHASSIS"
 fi
 
 # 3. Native Apps (CachyOS Repos & AUR)
