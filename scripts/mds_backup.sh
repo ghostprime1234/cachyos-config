@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-# Michael's MDS Hybrid Backup
+# MDS Backup and Synchronisation
 # Daily incremental snapshots / weekly compressed archive
-# Bidirectional laptop ↔ Mini PC synchronisation
-# Laptop → USB vault replication
+# Workstation ↔ Mini PC synchronisation
+# Workstation → USB vault replication
 
 set -Eeuo pipefail
 
@@ -143,14 +143,16 @@ else
     echo "Local and USB backups will continue."
 fi
 
-if ssh "${SSH_ARGS[@]}" "$SSH_DESTINATION" \
-    "test -d '${REMOTE_PATH}/University'"; then
+if [[ "$REMOTE_AVAILABLE" == true ]]; then
+    if ssh "${SSH_ARGS[@]}" "$SSH_DESTINATION" \
+        "test -d '${REMOTE_PATH}/University'"; then
 
-    echo "⚠ CRITICAL ERROR: An unexpected nested University directory exists remotely:"
-    echo "  ${SSH_DESTINATION}:${REMOTE_PATH}/University"
-    echo
-    echo "Move or reconcile the remote nested directory before synchronising."
-    exit 1
+        echo "⚠ CRITICAL ERROR: An unexpected nested University directory exists remotely:"
+        echo "  ${SSH_DESTINATION}:${REMOTE_PATH}/University"
+        echo
+        echo "Move or reconcile the remote nested directory before synchronising."
+        exit 1
+    fi
 fi
 
 if [[ ! "$DAILY_RETENTION_DAYS" =~ ^[0-9]+$ ]] ||
