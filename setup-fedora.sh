@@ -110,11 +110,18 @@ fi
 # ------------------------------------------------------------
 # Zsh configuration
 # ------------------------------------------------------------
-
 echo "Installing common Zsh configuration..."
 
-cp "$REPO_DIR/hosts/common/.zshrc" "$HOME/.zshrc"
-cp "$REPO_DIR/hosts/common/.p10k.zsh" "$HOME/.p10k.zsh"
+for file in .zshrc .p10k.zsh; do
+    target="$HOME/$file"
+
+    # Remove an old/broken symlink before installing the managed copy.
+    if [[ -L "$target" ]]; then
+        rm "$target"
+    fi
+
+    cp "$REPO_DIR/hosts/common/$file" "$target"
+done
 
 # ------------------------------------------------------------
 # Workstation configuration
@@ -134,17 +141,26 @@ if [[ "$ROLE" == "desktop" || "$ROLE" == "laptop" ]]; then
         https://dl.flathub.org/repo/flathub.flatpakrepo
 
     # RPM Fusion
-    sudo dnf install -y \
-        "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
-        "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+    echo "Configuring RPM Fusion repositories..."
+
+    if ! rpm -q rpmfusion-free-release >/dev/null 2>&1 ||
+       ! rpm -q rpmfusion-nonfree-release >/dev/null 2>&1; then
+
+        sudo dnf install -y \
+            "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+            "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+    else
+        echo "RPM Fusion repositories already configured."
+    fi
 
     # VS Code
-    echo "Adding Microsoft VS Code repository..."
+    echo "Configuring Microsoft VS Code repository..."
 
-    sudo rpm --import \
-        https://packages.microsoft.com/keys/microsoft.asc
+    if [[ ! -f /etc/yum.repos.d/vscode.repo ]]; then
+        sudo rpm --import \
+            https://packages.microsoft.com/keys/microsoft.asc
 
-    sudo tee /etc/yum.repos.d/vscode.repo >/dev/null <<'EOF'
+        sudo tee /etc/yum.repos.d/vscode.repo >/dev/null <<'EOF'
 [code]
 name=Visual Studio Code
 baseurl=https://packages.microsoft.com/yumrepos/vscode
@@ -154,15 +170,22 @@ type=rpm-md
 gpgcheck=1
 gpgkey=https://packages.microsoft.com/keys/microsoft.asc
 EOF
+    else
+        echo "VS Code repository already configured."
+    fi
 
     # Brave
-    echo "Adding Brave repository..."
+    echo "Configuring Brave repository..."
 
-    sudo dnf config-manager addrepo \
-        --from-repofile=https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
+    if [[ ! -f /etc/yum.repos.d/brave-browser.repo ]]; then
+        sudo dnf config-manager addrepo \
+            --from-repofile=https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
 
-    sudo rpm --import \
-        https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
+        sudo rpm --import \
+            https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
+    else
+        echo "Brave repository already configured."
+    fi
 
     # --------------------------------------------------------
     # Workstation packages
@@ -173,7 +196,6 @@ EOF
     sudo dnf install -y \
         brave-browser \
         code \
-        dbeaver \
         java-21-openjdk \
         kdenlive \
         libreoffice \
@@ -182,7 +204,6 @@ EOF
         obs-studio \
         plasma-browser-integration \
         poppler-glib \
-        power-profiles-daemon \
         python3 \
         python3-defusedxml \
         python3-packaging \
@@ -205,6 +226,7 @@ EOF
         org.projectlibre.ProjectLibre \
         com.jetbrains.Toolbox \
         com.discordapp.Discord \
+        io.dbeaver.DBeaverCommunity \
         us.zoom.Zoom
 
     # --------------------------------------------------------
