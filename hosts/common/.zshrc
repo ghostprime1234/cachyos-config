@@ -92,7 +92,7 @@ university_auto_env_sync() {
 
     # 3. ACTIVATION LOGIC
     if [[ -n "$subject_code" ]]; then
-        if [[ -d "$HOME/.conda/envs/$subject_code" ]]; then
+        if conda env list | awk '{print $1}' | grep -Fxq "$subject_code"; then
             [[ "$CONDA_DEFAULT_ENV" != "$subject_code" ]] && conda activate "$subject_code"
             return
         fi
