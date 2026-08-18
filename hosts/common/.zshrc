@@ -8,13 +8,16 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
+# Resolve the configuration repository from this symlinked .zshrc.
+REPO_DIR="${${(%):-%x}:A:h:h:h}"
+
 # 1. ALIASES
 alias resource='source ~/.zshrc'
 alias zshrc='micro ~/.zshrc'
 alias obsidian='obsidian --enable-features=UseOzonePlatform --ozone-platform=wayland'
 
-alias mds-bak="$HOME/cachyos-config/scripts/mds_backup.sh"
-alias mds-pull="$HOME/cachyos-config/scripts/mds_pull.sh"
+alias mds-bak="$REPO_DIR/scripts/mds_backup.sh"
+alias mds-pull="$REPO_DIR/scripts/mds_pull.sh"
 alias unisync='/usr/local/bin/unisync'
 
 alias lab-push="~/Big-Data-Cluster/infra/sync_labs.sh --push"
@@ -123,13 +126,17 @@ spark-master() {
 }
 # 7. POWERLEVEL10K
 
-# Load Powerlevel10k theme.
-if [[ -r /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme ]]; then
+# Prefer the standard location managed by setup-fedora.sh.
+if [[ -r "$HOME/.local/share/powerlevel10k/powerlevel10k.zsh-theme" ]]; then
+    source "$HOME/.local/share/powerlevel10k/powerlevel10k.zsh-theme"
+
+# Temporary compatibility with the old CachyOS package.
+elif [[ -r /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme ]]; then
     source /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme
 fi
 
 # Load Powerlevel10k configuration.
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+[[ -f "$HOME/.p10k.zsh" ]] && source "$HOME/.p10k.zsh"
 
 export PATH="$HOME/.local/bin:$PATH"
 

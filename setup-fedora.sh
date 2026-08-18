@@ -16,23 +16,30 @@ REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 ROLE="${1:-}"
 
-# Auto-detect workstation type when no role is supplied.
 if [[ -z "$ROLE" ]]; then
-    CHASSIS="$(hostnamectl chassis 2>/dev/null || true)"
+    # Read Fedora variant information.
+    # shellcheck disable=SC1091
+    source /etc/os-release
 
-    case "$CHASSIS" in
-        desktop)
-            ROLE="desktop"
-            ;;
-        laptop)
-            ROLE="laptop"
-            ;;
-        *)
-            echo "Unable to determine system role automatically."
-            echo "Usage: $0 {desktop|laptop|server}"
-            exit 1
-            ;;
-    esac
+    if [[ "${VARIANT_ID:-}" == "server" ]]; then
+        ROLE="server"
+    else
+        CHASSIS="$(hostnamectl chassis 2>/dev/null || true)"
+
+        case "$CHASSIS" in
+            desktop)
+                ROLE="desktop"
+                ;;
+            laptop)
+                ROLE="laptop"
+                ;;
+            *)
+                echo "Unable to determine system role automatically."
+                echo "Usage: $0 {desktop|laptop|server}"
+                exit 1
+                ;;
+        esac
+    fi
 fi
 
 case "$ROLE" in
@@ -122,6 +129,24 @@ for file in .zshrc .p10k.zsh; do
 
     ln -s "$source_file" "$target"
 done
+
+# ------------------------------------------------------------
+# Powerlevel10k
+# ------------------------------------------------------------
+
+echo "Configuring Powerlevel10k..."
+
+P10K_DIR="$HOME/.local/share/powerlevel10k"
+
+if [[ ! -d "$P10K_DIR/.git" ]]; then
+    echo "Installing Powerlevel10k..."
+
+    git clone --depth=1 \
+        https://github.com/romkatv/powerlevel10k.git \
+        "$P10K_DIR"
+else
+    echo "Powerlevel10k already installed."
+fi
 
 # ------------------------------------------------------------
 # Workstation configuration
@@ -223,11 +248,38 @@ EOF
         net.davidotek.pupgui2 \
         com.github.IsmaelMartinez.teams_for_linux \
         com.umlet.Umlet \
-        org.projectlibre.ProjectLibre \
-        com.jetbrains.Toolbox \
         com.discordapp.Discord \
         io.dbeaver.DBeaverCommunity \
         us.zoom.Zoom
+
+    # --------------------------------------------------------
+    # JetBrains Toolbox
+    # --------------------------------------------------------
+
+    echo "Installing JetBrains Toolbox..."
+
+    TOOLBOX_DIR="$HOME/.local/share/JetBrains/Toolbox-App"
+
+    if [[ ! -x "$TOOLBOX_DIR/bin/jetbrains-toolbox" ]]; then
+        mkdir -p "$TOOLBOX_DIR"
+
+        TOOLBOX_ARCHIVE="$(mktemp --suffix=.tar.gz)"
+
+        curl -L \
+            "https://data.services.jetbrains.com/products/download?code=TBA&platform=linux" \
+            -o "$TOOLBOX_ARCHIVE"
+
+        tar -xzf "$TOOLBOX_ARCHIVE" \
+            --strip-components=1 \
+            -C "$TOOLBOX_DIR"
+
+        rm -f "$TOOLBOX_ARCHIVE"
+
+		"$TOOLBOX_DIR/bin/jetbrains-toolbox" >/dev/null 2>&1 &
+        echo "JetBrains Toolbox installed."
+    else
+        echo "JetBrains Toolbox already installed."
+    fi
 
     # --------------------------------------------------------
     # SSH configuration
@@ -280,4 +332,6 @@ chmod +x "$ROLE_SCRIPT"
 # ------------------------------------------------------------
 
 echo
+echo "NOTE: ProjectLibre is not installed automatically."
+echo "Install the ProjectLibre RPM manually if required for coursework."
 echo "Fedora $ROLE setup complete."
