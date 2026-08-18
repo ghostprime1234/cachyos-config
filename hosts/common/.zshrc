@@ -121,7 +121,14 @@ spark-master() {
   docker exec -it spark-master \
     /opt/spark/bin/spark-submit "/course/${rel_dir}/$1"
 }
-# 7. THE FINAL WORD (Source p10k ONCE at the very end)
+# 7. POWERLEVEL10K
+
+# Load Powerlevel10k theme.
+if [[ -r /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme ]]; then
+    source /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme
+fi
+
+# Load Powerlevel10k configuration.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
 export PATH="$HOME/.local/bin:$PATH"

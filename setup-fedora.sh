@@ -110,17 +110,17 @@ fi
 # ------------------------------------------------------------
 # Zsh configuration
 # ------------------------------------------------------------
+
 echo "Installing common Zsh configuration..."
 
 for file in .zshrc .p10k.zsh; do
+    source_file="$REPO_DIR/hosts/common/$file"
     target="$HOME/$file"
 
-    # Remove an old/broken symlink before installing the managed copy.
-    if [[ -L "$target" ]]; then
-        rm "$target"
-    fi
+    # Replace an existing file or stale symlink.
+    rm -f "$target"
 
-    cp "$REPO_DIR/hosts/common/$file" "$target"
+    ln -s "$source_file" "$target"
 done
 
 # ------------------------------------------------------------
