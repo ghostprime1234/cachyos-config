@@ -122,10 +122,14 @@ sync_dir "$SOURCE_ROOT/OBS Videos" \
 sync_dir "$SOURCE_ROOT/Big-Data-Cluster" \
          "$HOME/Big-Data-Cluster"
 
-# Rename the old configuration repository locally.
-sync_dir "$SOURCE_ROOT/cachyos-config" \
-         "$HOME/fedora-config"
-
+if [[ -d "$HOME/fedora-config/.git" ]]; then
+    echo
+    echo "fedora-config already exists as a Git repository."
+    echo "Skipping backed-up cachyos-config restore."
+else
+    sync_dir "$SOURCE_ROOT/cachyos-config" \
+             "$HOME/fedora-config"
+fi
 sync_dir "$SOURCE_ROOT/openweb-ui" \
          "$HOME/openweb-ui"
 
@@ -172,8 +176,9 @@ if [[ -d "$SOURCE_ROOT/.ssh" ]]; then
     mkdir -p "$HOME/.ssh"
 
     rsync "${RSYNC_OPTS[@]}" \
-        "$SOURCE_ROOT/.ssh/" \
-        "$HOME/.ssh/"
+    --exclude='config' \
+    "$SOURCE_ROOT/.ssh/" \
+    "$HOME/.ssh/"
 
     # Only change permissions during a real restore.
     if [[ "$DRY_RUN" != "1" ]]; then
