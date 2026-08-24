@@ -26,18 +26,50 @@ fi
 # These services exist once the NVIDIA RPM Fusion packages are installed.
 sudo systemctl enable nvidia-hibernate.service nvidia-resume.service nvidia-suspend.service 2>/dev/null || true
 
-echo "Checking /mnt/Data..."
+# ------------------------------------------------------------
+# Data drive
+# ------------------------------------------------------------
 
-if mountpoint -q /mnt/Data; then
-    echo "/mnt/Data is mounted."
+DATA_MOUNT="/mnt/Data"
+DATA_UUID="5ae96703-ba78-4401-9c92-9d06dd52589d"
+
+echo "Configuring data drive..."
+
+sudo mkdir -p "$DATA_MOUNT"
+
+if ! blkid -U "$DATA_UUID" >/dev/null 2>&1; then
+    echo "WARNING: Data drive with UUID $DATA_UUID was not found."
+    echo "Skipping automatic mount."
 else
-    echo "WARNING: /mnt/Data is not currently a mounted filesystem."
-    echo "Configure the data drive before restoring files."
+    DATA_DEVICE="$(blkid -U "$DATA_UUID")"
+
+    if ! grep -q "UUID=$DATA_UUID" /etc/fstab; then
+        echo "Adding data drive to /etc/fstab..."
+
+        FILESYSTEM="$(lsblk -no FSTYPE "$DATA_DEVICE")"
+
+        echo "UUID=$DATA_UUID $DATA_MOUNT $FILESYSTEM defaults,nofail 0 0" \
+            | sudo tee -a /etc/fstab >/dev/null
+    else
+        echo "Data drive already exists in /etc/fstab."
+    fi
+
+    if ! mountpoint -q "$DATA_MOUNT"; then
+        echo "Mounting $DATA_MOUNT..."
+        sudo mount "$DATA_MOUNT"
+    else
+        echo "$DATA_MOUNT is already mounted."
+    fi
 fi
 
-echo "Creating local university folder..."
-sudo mkdir -p "/mnt/Data/University"
-sudo chown "$USER:$USER" "/mnt/Data/University"
+if mountpoint -q "$DATA_MOUNT"; then
+    echo "Creating local university folder..."
+    sudo mkdir -p "$DATA_MOUNT/University"
+    sudo chown "$USER:$USER" "$DATA_MOUNT/University"
+else
+    echo "WARNING: $DATA_MOUNT is not mounted."
+    echo "University directory was not created."
+fi
 
 if command -v powerprofilesctl >/dev/null 2>&1; then
   powerprofilesctl set performance || true
