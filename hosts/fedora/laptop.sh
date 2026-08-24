@@ -3,15 +3,6 @@
 
 set -euo pipefail
 
-DESIRED_HOSTNAME="michael-laptop-fedora"
-
-if [[ "$(hostnamectl --static)" != "$DESIRED_HOSTNAME" ]]; then
-    echo "Setting hostname to $DESIRED_HOSTNAME..."
-    sudo hostnamectl set-hostname "$DESIRED_HOSTNAME"
-else
-    echo "Hostname already configured."
-fi
-
 echo "Checking IdeaPad battery conservation support..."
 
 CONSERVATION_PATH="/sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/conservation_mode"

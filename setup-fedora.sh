@@ -54,6 +54,18 @@ esac
 
 echo "Starting Fedora setup for role: $ROLE"
 
+case "$ROLE" in
+    desktop)
+        DESIRED_HOSTNAME="michael-desktop-fedora"
+        ;;
+    laptop)
+        DESIRED_HOSTNAME="michael-laptop-fedora"
+        ;;
+    server)
+        DESIRED_HOSTNAME="michael-server-fedora"
+        ;;
+esac
+
 # ------------------------------------------------------------
 # Fedora validation
 # ------------------------------------------------------------
@@ -63,12 +75,39 @@ if [[ ! -f /etc/fedora-release ]]; then
     exit 1
 fi
 
+echo "Configuring hostname for Fedora $ROLE..."
+
+# ------------------------------------------------------------
+# Hostname
+# ------------------------------------------------------------
+#
+if [[ "$(hostnamectl --static)" != "$DESIRED_HOSTNAME" ]]; then
+    echo "Setting hostname to $DESIRED_HOSTNAME..."
+    sudo hostnamectl set-hostname "$DESIRED_HOSTNAME"
+else
+    echo "Hostname already configured."
+fi
+
+
 # ------------------------------------------------------------
 # System update
 # ------------------------------------------------------------
 
 echo "Updating Fedora..."
 sudo dnf upgrade -y
+
+# ------------------------------------------------------------
+# Tailscale repository
+# ------------------------------------------------------------
+
+echo "Configuring Tailscale repository..."
+
+if [[ ! -f /etc/yum.repos.d/tailscale.repo ]]; then
+    sudo dnf config-manager addrepo \
+        --from-repofile=https://pkgs.tailscale.com/stable/fedora/tailscale.repo
+else
+    echo "Tailscale repository already configured."
+fi
 
 # ------------------------------------------------------------
 # Common packages
@@ -129,6 +168,13 @@ for file in .zshrc .p10k.zsh; do
 
     ln -s "$source_file" "$target"
 done
+
+ZSH_PATH="$(command -v zsh)"
+
+if [[ "$SHELL" != "$ZSH_PATH" ]]; then
+    echo "Setting Zsh as default shell..."
+    chsh -s "$ZSH_PATH"
+fi
 
 # ------------------------------------------------------------
 # Powerlevel10k
@@ -234,8 +280,16 @@ EOF
         python3-packaging \
         steam \
         virt-manager \
+        virt-install \
+        libvirt \
+        qemu-kvm \
         vlc \
         xdg-user-dirs
+
+    echo "Configuring virtualization..."
+
+    sudo systemctl enable --now libvirtd
+    sudo usermod -aG libvirt "$USER"
 
     # --------------------------------------------------------
     # Flatpak applications

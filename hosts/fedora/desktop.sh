@@ -3,19 +3,7 @@
 
 set -euo pipefail
 
-echo "Configuring Fedora desktop for NVIDIA, gaming, and university workflow..."
-# ------------------------------------------------------------
-# Hostname
-# ------------------------------------------------------------
 
-DESIRED_HOSTNAME="michael-desktop-fedora"
-
-if [[ "$(hostnamectl --static)" != "$DESIRED_HOSTNAME" ]]; then
-    echo "Setting hostname to $DESIRED_HOSTNAME..."
-    sudo hostnamectl set-hostname "$DESIRED_HOSTNAME"
-else
-    echo "Hostname already configured."
-fi
 
 # NVIDIA + CUDA support from RPM Fusion.
 # Assumes RPM Fusion free/nonfree repos were already enabled by setup-fedora.sh.
@@ -38,6 +26,15 @@ fi
 # These services exist once the NVIDIA RPM Fusion packages are installed.
 sudo systemctl enable nvidia-hibernate.service nvidia-resume.service nvidia-suspend.service 2>/dev/null || true
 
+echo "Checking /mnt/Data..."
+
+if mountpoint -q /mnt/Data; then
+    echo "/mnt/Data is mounted."
+else
+    echo "WARNING: /mnt/Data is not currently a mounted filesystem."
+    echo "Configure the data drive before restoring files."
+fi
+
 echo "Creating local university folder..."
 sudo mkdir -p "/mnt/Data/University"
 sudo chown "$USER:$USER" "/mnt/Data/University"
@@ -59,6 +56,13 @@ fi
 
 echo "Installing gaming performance tools..."
 sudo dnf install -y gamemode
+
+echo "Installing Podman container tooling..."
+
+sudo dnf install -y \
+    podman \
+    podman-compose \
+    podman-docker
 
 echo "Desktop hardware configuration complete."
 
