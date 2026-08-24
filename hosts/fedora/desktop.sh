@@ -4,6 +4,18 @@
 set -euo pipefail
 
 echo "Configuring Fedora desktop for NVIDIA, gaming, and university workflow..."
+# ------------------------------------------------------------
+# Hostname
+# ------------------------------------------------------------
+
+DESIRED_HOSTNAME="michael-desktop-fedora"
+
+if [[ "$(hostnamectl --static)" != "$DESIRED_HOSTNAME" ]]; then
+    echo "Setting hostname to $DESIRED_HOSTNAME..."
+    sudo hostnamectl set-hostname "$DESIRED_HOSTNAME"
+else
+    echo "Hostname already configured."
+fi
 
 # NVIDIA + CUDA support from RPM Fusion.
 # Assumes RPM Fusion free/nonfree repos were already enabled by setup-fedora.sh.
@@ -44,6 +56,9 @@ sudo modprobe i2c-dev || true
 if systemctl list-unit-files | grep -q '^openrgb\.service'; then
   sudo systemctl enable --now openrgb.service
 fi
+
+echo "Installing gaming performance tools..."
+sudo dnf install -y gamemode
 
 echo "Desktop hardware configuration complete."
 
