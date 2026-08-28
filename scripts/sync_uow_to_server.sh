@@ -3,8 +3,34 @@
 set -Eeuo pipefail
 
 SOURCE="/mnt/Data/University/UOW"
-DEST="michael@michael-server-fedora:/data/University/UOW"
+REMOTE_DESTINATION="michael@michael-server-fedora"
+REMOTE_PATH="/data/University/UOW"
+DEST="${REMOTE_DESTINATION}:${REMOTE_PATH}"
 SSH_KEY="$HOME/.ssh/id_ed25519_desktop"
+DRY_RUN=false
+
+case "${1:-}" in
+    --dry-run)
+        DRY_RUN=true
+        echo "=== DRY RUN MODE ==="
+        ;;
+    "")
+        ;;
+    *)
+        echo "Usage: $0 [--dry-run]"
+        exit 1
+        ;;
+esac
+
+if (( $# > 1 )); then
+    echo "Usage: $0 [--dry-run]"
+    exit 1
+fi
+
+RSYNC_DRY_ARGS=()
+if [[ "$DRY_RUN" == true ]]; then
+    RSYNC_DRY_ARGS+=(--dry-run)
+fi
 
 echo "Starting UOW sync..."
 
@@ -27,10 +53,23 @@ if [[ ! -f "$SSH_KEY" ]]; then
     exit 1
 fi
 
+SSH_ARGS=(-i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=15)
+printf -v SSH_TRANSPORT 'ssh -i %q -o BatchMode=yes -o ConnectTimeout=15' "$SSH_KEY"
+printf -v REMOTE_DIRECTORY_TEST 'test -d %q' "$REMOTE_PATH"
+
+# REMOTE_PATH_SHELL was escaped with printf %q above.
+# shellcheck disable=SC2029
+if ! ssh "${SSH_ARGS[@]}" "$REMOTE_DESTINATION" "$REMOTE_DIRECTORY_TEST"; then
+    echo "ERROR: Remote destination does not exist or could not be validated:"
+    echo "  $DEST"
+    exit 1
+fi
+
 rsync -avh \
+    "${RSYNC_DRY_ARGS[@]}" \
     --delete \
     --progress \
-    -e "ssh -i $SSH_KEY -o BatchMode=yes -o ConnectTimeout=15" \
+    -e "$SSH_TRANSPORT" \
     "$SOURCE/" \
     "$DEST/"
 
