@@ -36,6 +36,7 @@ The repository provides a common Fedora setup with host-specific configuration, 
 │   ├── mds_backup.env.example
 │   ├── mds_backup.sh
 │   ├── mds_pull.sh
+│   ├── restore-fedora-data.sh
 │   ├── rgb-off.sh
 │   └── rsync-excludes.txt
 ├── .gitignore
@@ -167,6 +168,20 @@ The script selects an appropriate connection method and synchronises newer files
 
 After ingestion, the normal backup workflow can be run to propagate the updated data to the remaining backup destinations.
 
+### Restore
+
+`scripts/restore-fedora-data.sh` restores files from a backup onto a freshly installed Fedora system:
+
+```bash
+./scripts/restore-fedora-data.sh /path/to/backup
+```
+
+To preview the restore without changing any files:
+
+```bash
+DRY_RUN=1 ./scripts/restore-fedora-data.sh /path/to/backup
+```
+
 ## Backup Configuration
 
 Runtime configuration for the MDS backup system is stored in:
@@ -251,7 +266,8 @@ shellcheck \
     scripts/fix-bluetooth-audio.sh \
     scripts/hdd-ingest.sh \
     scripts/mds_pull.sh \
-    scripts/mds_backup.sh
+    scripts/mds_backup.sh \
+    scripts/restore-fedora-data.sh
 ```
 
 Git whitespace errors can be checked with:

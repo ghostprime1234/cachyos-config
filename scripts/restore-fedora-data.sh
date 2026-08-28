@@ -61,7 +61,9 @@ sync_dir() {
     echo "  $source"
     echo "     -> $destination"
 
-    mkdir -p "$destination"
+    if [[ "$DRY_RUN" != "1" ]]; then
+        mkdir -p "$destination"
+    fi
 
     rsync "${RSYNC_OPTS[@]}" \
         "$source/" \
@@ -82,7 +84,9 @@ sync_file() {
     echo "  $source"
     echo "     -> $destination"
 
-    mkdir -p "$(dirname "$destination")"
+    if [[ "$DRY_RUN" != "1" ]]; then
+        mkdir -p "$(dirname "$destination")"
+    fi
 
     rsync "${RSYNC_OPTS[@]}" \
         "$source" \
@@ -173,7 +177,9 @@ if [[ -d "$SOURCE_ROOT/.ssh" ]]; then
     echo
     echo "Restoring SSH configuration and keys..."
 
-    mkdir -p "$HOME/.ssh"
+    if [[ "$DRY_RUN" != "1" ]]; then
+        mkdir -p "$HOME/.ssh"
+    fi
 
     rsync "${RSYNC_OPTS[@]}" \
     --exclude='config' \

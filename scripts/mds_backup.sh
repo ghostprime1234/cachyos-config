@@ -196,7 +196,9 @@ fi
 
 if [[ -d "$LOCAL_VAULT" && -w "$LOCAL_VAULT" ]]; then
 
-    mkdir -p "$USB_LIVE_WORK"
+    if [[ "$DRY_RUN" != true ]]; then
+        mkdir -p "$USB_LIVE_WORK"
+    fi
 
     echo
     echo "--- Step 2a: Pushing live work to USB vault ---"
@@ -235,13 +237,15 @@ fi
 # 5. STATUS
 # ==============================================================================
 
-mkdir -p "$(dirname "$STATUS_FILE")"
+if [[ "$DRY_RUN" != true ]]; then
+    mkdir -p "$(dirname "$STATUS_FILE")"
 
-{
-    echo "Last MDS Sync: $(date --iso-8601=seconds)"
-    echo "Source: $SOURCE"
-    echo "Remote: ${SSH_DESTINATION}:${REMOTE_PATH}"
-} > "$STATUS_FILE"
+    {
+        echo "Last MDS Sync: $(date --iso-8601=seconds)"
+        echo "Source: $SOURCE"
+        echo "Remote: ${SSH_DESTINATION}:${REMOTE_PATH}"
+    } > "$STATUS_FILE"
+fi
 
 echo
 echo "============================================================"

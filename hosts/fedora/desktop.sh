@@ -62,12 +62,14 @@ else
     fi
 fi
 
-if mountpoint -q "$DATA_MOUNT"; then
+MOUNTED_UUID="$(findmnt -no UUID "$DATA_MOUNT" 2>/dev/null || true)"
+
+if mountpoint -q "$DATA_MOUNT" && [[ "$MOUNTED_UUID" == "$DATA_UUID" ]]; then
     echo "Creating local university folder..."
     sudo mkdir -p "$DATA_MOUNT/University"
     sudo chown "$USER:$USER" "$DATA_MOUNT/University"
 else
-    echo "WARNING: $DATA_MOUNT is not mounted."
+    echo "WARNING: $DATA_MOUNT is not mounted with the expected data drive (UUID $DATA_UUID)."
     echo "University directory was not created."
 fi
 

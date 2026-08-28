@@ -31,8 +31,7 @@ fi
 
 echo "Configuring power profile..."
 
-if command -v tuned-adm >/dev/null 2>&1; then
-  sudo tuned-adm profile balanced
+if command -v tuned-adm >/dev/null 2>&1 && sudo tuned-adm profile balanced; then
   echo "TuneD profile set to balanced."
 elif command -v powerprofilesctl >/dev/null 2>&1; then
   powerprofilesctl set balanced
