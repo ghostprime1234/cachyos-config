@@ -32,6 +32,8 @@ sudo systemctl enable nvidia-hibernate.service nvidia-resume.service nvidia-susp
 
 DATA_MOUNT="/mnt/Data"
 DATA_UUID="5ae96703-ba78-4401-9c92-9d06dd52589d"
+VAULT_MOUNT="/mnt/MDS_VAULT"
+VAULT_UUID="a358df98-79a1-42fb-af5c-d38f43c60305"
 
 echo "Configuring data drive..."
 
@@ -43,15 +45,23 @@ if ! blkid -U "$DATA_UUID" >/dev/null 2>&1; then
 else
     DATA_DEVICE="$(blkid -U "$DATA_UUID")"
 
-    if ! grep -q "UUID=$DATA_UUID" /etc/fstab; then
+    if grep -Eq "^[[:space:]]*UUID=${DATA_UUID}[[:space:]]+${DATA_MOUNT}[[:space:]]" /etc/fstab; then
+        echo "Data drive already exists in /etc/fstab."
+    elif grep -Eq "^[[:space:]]*UUID=${DATA_UUID}[[:space:]]" /etc/fstab; then
+        echo "ERROR: Data drive UUID $DATA_UUID is configured for a different mount point in /etc/fstab."
+        exit 1
+    else
         echo "Adding data drive to /etc/fstab..."
 
         FILESYSTEM="$(lsblk -no FSTYPE "$DATA_DEVICE")"
 
+        if [[ -z "$FILESYSTEM" ]]; then
+            echo "ERROR: Unable to determine the filesystem type for $DATA_DEVICE."
+            exit 1
+        fi
+
         echo "UUID=$DATA_UUID $DATA_MOUNT $FILESYSTEM defaults,nofail 0 0" \
             | sudo tee -a /etc/fstab >/dev/null
-    else
-        echo "Data drive already exists in /etc/fstab."
     fi
 
     if ! mountpoint -q "$DATA_MOUNT"; then
@@ -71,6 +81,36 @@ if mountpoint -q "$DATA_MOUNT" && [[ "$MOUNTED_UUID" == "$DATA_UUID" ]]; then
 else
     echo "WARNING: $DATA_MOUNT is not mounted with the expected data drive (UUID $DATA_UUID)."
     echo "University directory was not created."
+fi
+
+echo "Configuring MDS_VAULT mount point..."
+
+sudo mkdir -p "$VAULT_MOUNT"
+
+if ! blkid -U "$VAULT_UUID" >/dev/null 2>&1; then
+    echo "WARNING: MDS_VAULT with UUID $VAULT_UUID was not found."
+    echo "Skipping automatic mount."
+elif grep -Eq "^[[:space:]]*UUID=${VAULT_UUID}[[:space:]]+${VAULT_MOUNT}[[:space:]]" /etc/fstab; then
+    echo "MDS_VAULT already exists in /etc/fstab."
+elif grep -Eq "^[[:space:]]*UUID=${VAULT_UUID}[[:space:]]" /etc/fstab; then
+    echo "ERROR: MDS_VAULT UUID $VAULT_UUID is configured for a different mount point in /etc/fstab."
+    exit 1
+else
+    echo "Adding MDS_VAULT to /etc/fstab..."
+    echo "UUID=$VAULT_UUID $VAULT_MOUNT btrfs defaults,nofail 0 0" \
+        | sudo tee -a /etc/fstab >/dev/null
+fi
+
+if blkid -U "$VAULT_UUID" >/dev/null 2>&1 && ! mountpoint -q "$VAULT_MOUNT"; then
+    echo "Mounting $VAULT_MOUNT..."
+    sudo mount "$VAULT_MOUNT"
+fi
+
+VAULT_IDENTITY="$(findmnt -no FSTYPE,LABEL,UUID "$VAULT_MOUNT" 2>/dev/null || true)"
+if mountpoint -q "$VAULT_MOUNT" &&
+   [[ "$VAULT_IDENTITY" != "btrfs MDS_VAULT $VAULT_UUID" ]]; then
+    echo "ERROR: $VAULT_MOUNT is not the expected MDS_VAULT Btrfs filesystem."
+    exit 1
 fi
 
 if command -v powerprofilesctl >/dev/null 2>&1; then

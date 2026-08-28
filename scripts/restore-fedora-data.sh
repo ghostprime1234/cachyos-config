@@ -129,9 +129,9 @@ sync_dir "$SOURCE_ROOT/Big-Data-Cluster" \
 if [[ -d "$HOME/fedora-config/.git" ]]; then
     echo
     echo "fedora-config already exists as a Git repository."
-    echo "Skipping backed-up cachyos-config restore."
+    echo "Skipping backed-up fedora-config restore."
 else
-    sync_dir "$SOURCE_ROOT/cachyos-config" \
+    sync_dir "$SOURCE_ROOT/fedora-config" \
              "$HOME/fedora-config"
 fi
 sync_dir "$SOURCE_ROOT/openweb-ui" \

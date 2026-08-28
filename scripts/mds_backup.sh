@@ -12,9 +12,22 @@ set -Eeuo pipefail
 
 DRY_RUN=false
 
-if [[ "${1:-}" == "--dry-run" ]]; then
-    DRY_RUN=true
-    echo "=== DRY RUN MODE ==="
+case "${1:-}" in
+    --dry-run)
+        DRY_RUN=true
+        echo "=== DRY RUN MODE ==="
+        ;;
+    "")
+        ;;
+    *)
+        echo "Usage: $0 [--dry-run]"
+        exit 1
+        ;;
+esac
+
+if (( $# > 1 )); then
+    echo "Usage: $0 [--dry-run]"
+    exit 1
 fi
 
 RSYNC_DRY_ARGS=()
@@ -61,6 +74,21 @@ SOURCE="${SOURCE%/}"
 LOCAL_VAULT="${LOCAL_VAULT%/}"
 REMOTE_PATH="${REMOTE_PATH%/}"
 
+if [[ ! "$REMOTE_USER" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "⚠ CRITICAL ERROR: REMOTE_USER contains unsupported characters."
+    exit 1
+fi
+
+if [[ ! "$REMOTE_HOST" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "⚠ CRITICAL ERROR: REMOTE_HOST contains unsupported characters."
+    exit 1
+fi
+
+if [[ ! "$REMOTE_PATH" =~ ^/[A-Za-z0-9._/-]+$ || "$REMOTE_PATH" == "/" ]]; then
+    echo "⚠ CRITICAL ERROR: REMOTE_PATH must be a safe absolute path other than '/'."
+    exit 1
+fi
+
 # ==============================================================================
 # 1. NETWORK / PATH CONFIGURATION
 # ==============================================================================
@@ -74,9 +102,14 @@ SSH_ARGS=(
 SSH_DESTINATION="${REMOTE_USER}@${REMOTE_HOST}"
 REMOTE_TARGET="${SSH_DESTINATION}:${REMOTE_PATH}"
 
-SSH_TRANSPORT="ssh -i $SSH_KEY -o BatchMode=yes -o ConnectTimeout=15"
+printf -v SSH_TRANSPORT 'ssh -i %q -o BatchMode=yes -o ConnectTimeout=15' "$SSH_KEY"
+printf -v REMOTE_DIRECTORY_TEST 'test -d %q' "$REMOTE_PATH"
+printf -v REMOTE_NESTING_TEST 'test -d %q' "${REMOTE_PATH}/University"
 
 USB_LIVE_WORK="${LOCAL_VAULT}/Live_Work"
+VAULT_MOUNT="/mnt/MDS_VAULT"
+VAULT_UUID="a358df98-79a1-42fb-af5c-d38f43c60305"
+DATA_UUID="5ae96703-ba78-4401-9c92-9d06dd52589d"
 
 # ==============================================================================
 # 2. GUARDIAN LAYER
@@ -87,6 +120,13 @@ echo "--- Running safety checks ---"
 if [[ ! -d "$SOURCE" ]]; then
     echo "⚠ CRITICAL ERROR: Source directory does not exist:"
     echo "  $SOURCE"
+    exit 1
+fi
+
+if [[ "$(findmnt -n -o UUID --target "$SOURCE" 2>/dev/null || true)" != "$DATA_UUID" ]]; then
+    echo "⚠ CRITICAL ERROR: Source is not on the expected data drive:"
+    echo "  $SOURCE"
+    echo "Expected filesystem UUID: $DATA_UUID"
     exit 1
 fi
 
@@ -118,8 +158,10 @@ fi
 
 REMOTE_AVAILABLE=false
 
+# REMOTE_PATH_SHELL was escaped with printf %q above.
+# shellcheck disable=SC2029
 if ssh "${SSH_ARGS[@]}" "$SSH_DESTINATION" \
-    "test -d '$REMOTE_PATH'" 2>/dev/null; then
+    "$REMOTE_DIRECTORY_TEST" 2>/dev/null; then
 
     REMOTE_AVAILABLE=true
     echo "✓ Fedora server is available."
@@ -129,12 +171,19 @@ else
 fi
 
 if [[ "$REMOTE_AVAILABLE" == true ]]; then
+    # shellcheck disable=SC2029
     if ssh "${SSH_ARGS[@]}" "$SSH_DESTINATION" \
-        "test -d '${REMOTE_PATH}/University'"; then
+        "$REMOTE_NESTING_TEST"; then
 
         echo "⚠ CRITICAL ERROR: Unexpected nested University directory exists remotely:"
         echo "  ${SSH_DESTINATION}:${REMOTE_PATH}/University"
         exit 1
+    else
+        SSH_TEST_STATUS=$?
+        if (( SSH_TEST_STATUS != 1 )); then
+            echo "⚠ CRITICAL ERROR: Unable to validate the remote directory layout."
+            exit 1
+        fi
     fi
 fi
 
@@ -194,7 +243,11 @@ fi
 # 4. USB VAULT LIVE-WORK COPY
 # ==============================================================================
 
-if [[ -d "$LOCAL_VAULT" && -w "$LOCAL_VAULT" ]]; then
+VAULT_IDENTITY="$(findmnt -n -o TARGET,FSTYPE,LABEL,UUID --target "$LOCAL_VAULT" 2>/dev/null || true)"
+
+if [[ -d "$LOCAL_VAULT" &&
+      "$VAULT_IDENTITY" == "$VAULT_MOUNT btrfs MDS_VAULT $VAULT_UUID" &&
+      ( -w "$LOCAL_VAULT" || "$DRY_RUN" == true ) ]]; then
 
     if [[ "$DRY_RUN" != true ]]; then
         mkdir -p "$USB_LIVE_WORK"
@@ -229,7 +282,7 @@ if [[ -d "$LOCAL_VAULT" && -w "$LOCAL_VAULT" ]]; then
 
 else
     echo
-    echo "⏸ USB vault unavailable or read-only:"
+    echo "⏸ USB vault unavailable, read-only, or not the expected mounted filesystem:"
     echo "  $LOCAL_VAULT"
 fi
 
