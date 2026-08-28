@@ -1,505 +1,329 @@
-# CachyOS-config
+# Fedora Configuration
 
-# CachyOS-Setup
+Personal Fedora configuration and automation repository for provisioning and maintaining my desktop, laptop, and home server systems.
 
-**Overview** — Brief description of what this repo does (CachyOS system setup with multi-device support and uni file syncing)
+The repository provides a common Fedora setup with host-specific configuration, shell configuration, SSH configuration, and university data backup/synchronisation tooling.
 
-## 📋 Quick Start
+## Supported Systems
 
-### Prerequisites
-- **CachyOS** installed (Arch-based distribution)
-- **Sudo access** (required for system updates and service management)
-- **Internet connection** (for package downloads)
-- **Tailscale account** (for NAS/Proxmox access) — [Sign up free](https://tailscale.com)
-- **Git** (for cloning this repo)
+| System | Fedora Edition | Purpose |
+|---|---|---|
+| Desktop | Fedora Workstation | Primary workstation, gaming, development, and data science |
+| Laptop | Fedora Workstation | Mobile development and university work |
+| Mini PC | Fedora Server | Home server, container services, storage, and backup/synchronisation |
 
-### Installation
+## Repository Structure
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yourusername/cachyos-setup.git
-   cd cachyos-setup
-   ```
-
-2. **Make scripts executable:**
-   ```bash
-   chmod +x *.sh hosts/*.sh
-   ```
-
-3. **Run the main setup:**
-   ```bash
-   ./setup-cachyos.sh
-   ```
-   The script will automatically:
-   - Detect your device type (desktop/laptop)
-   - Install essentials and Tailscale
-   - Run hardware-specific configuration
-   - Install applications (Brave, VS Code, Discord, etc.)
-   - Prompt you to authenticate with Tailscale
-
-4. **Optional: Set up uni-sync scheduling**
-   - Edit `smart-resume.sh` with your hub IP if needed
-   - Add to crontab for automatic syncing
-
-## 📁 Project Structure
-- `setup-cachyos.sh` — Main entry point, auto-detects device and runs hardware-specific configs
-- `hosts/` — Device-specific configurations (desktop, laptop)
-- `uni-sync.sh` — University file sync utility
-- `uni-archive-sync.sh` — Archive-specific syncing
-- `backup_uni.sh` — Backup creation
-- `smart-resume.sh` — Resume functionality
-
-## 🚀 Available Scripts
-
-### Core Setup
-- **setup-cachyos.sh** — Initialize system, install essentials, Tailscale, then run device-specific script
-
-### Device-Specific
-- **hosts/desktop.sh** — GPU drivers (NVIDIA), gaming optimization, CUDA
-- **hosts/laptop.sh** — Laptop power management, etc.
-
-### University File Sync
-- **uni-sync.sh** — Two-way rsync with Proxmox
-- **uni-archive-sync.sh** — Archive/backup syncing
-- **backup_uni.sh** — Create backups
-
-### Utilities
-- **smart-resume.sh** — [Add description]
-
-## 🔧 Hardware Support
-List your supported devices and what makes them special
-
-## 🌐 Dependencies
-
-### System Requirements
-- **CachyOS** (Arch-based Linux distribution)
-- **Sudo access** for system-level changes
-- **Pacman** (CachyOS package manager)
-- **Paru** (AUR helper, will be available after setup)
-
-### Core CLI Tools
-*(Automatically installed by `setup-cachyos.sh`)*
-- `tailscale` — VPN for NAS/Proxmox connectivity
-- `rsync` — File synchronization
-- `git`, `curl`, `wget` — Networking & version control
-- `bc` — Calculator (for latency math in smart-resume.sh)
-- `nfs-utils` — NFS mounting for network shares
-- `direnv` — Directory-specific environment management
-- `rclone` — Cloud storage sync
-
-### Hardware-Specific
-
-**Desktop (RTX 5070 Ti):**
-- `nvidia-cachyos-dkms` — NVIDIA GPU drivers (auto-rebuilds with kernel)
-- `cuda` — NVIDIA CUDA toolkit
-- `lib32-nvidia-utils-cachyos` — 32-bit GPU support
-- `cachyos-gaming-meta` — Gaming optimization suite
-
-**Laptop (IdeaPad):**
-- `auto-cpufreq` — CPU frequency scaling
-- `power-profiles-daemon` — Power profile management
-
-### Applications
-*(Installed by `setup-cachyos.sh` via AUR)*
-- `brave-bin` — Privacy-focused browser
-- `visual-studio-code-bin` — Code editor
-- `betterbird-bin` — Email client (Thunderbird fork)
-- `discord` — Communication
-- `obsidian` — Note-taking
-- `zoom` — Video conferencing
-
-### Optional: Mutagen (for smart-resume.sh)
-- `mutagen` — File sync daemon (required for latency-aware syncing)
-- `iputils` — Ping utility for network diagnostics
-
-### Network Requirements
-- **Tailscale VPN** — Access to Proxmox NAS (University files)
-- **Synology** system — Optional for additional backups
-
-## 📖 Usage
-
-### Initial System Setup
-Run once after installing CachyOS:
-```bash
-./setup-cachyos.sh
-```
-This handles everything: system updates, Tailscale, device-specific config, and app installation.
-
-### University File Sync
-
-**Manual two-way sync (Pull then Push):**
-```bash
-./uni-sync.sh
-```
-Syncs between `~/Documents/University/` and Proxmox NAS at `/mnt/proxmox_uni`. Safe flags prevent permission issues and false re-copies over network shares.
-
-**Archive-specific syncing:**
-```bash
-./uni-archive-sync.sh
-```
-Backup or sync archived university data (adjust paths as needed).
-
-### Backups
-
-**Create a backup to USB/external drive:**
-```bash
-./backup_uni.sh
-```
-Backs up your home directory to a USB drive at `/run/media/michael/Ventoy/michael_backup/`. Automatically:
-- Detects and mounts the USB if not already mounted
-- Excludes cache, trash, and Python bytecode
-- Shows progress with human-readable sizes
-- Syncs deletions (keeps backup up-to-date)
-
-### Smart Resume (Latency-Aware Syncing)
-
-**Automatic sync based on network proximity:**
-```bash
-./smart-resume.sh
-```
-Checks latency to your home network hub. If under 10ms (home), resumes Mutagen sync. If higher (remote), pauses to preserve bandwidth.
-
-**Set up automatic checks via cron (every 5 minutes):**
-```bash
-(crontab -l 2>/dev/null; echo "*/5 * * * * ~/cachyos-setup/smart-resume.sh") | crontab -
+```text
+.
+├── config/
+│   └── ssh/
+│       ├── desktop.conf
+│       └── laptop.conf
+├── hosts/
+│   ├── common/
+│   │   ├── .p10k.zsh
+│   │   └── .zshrc
+│   └── fedora/
+│       ├── desktop.sh
+│       ├── laptop.sh
+│       └── server.sh
+├── Icons/
+├── scripts/
+│   ├── archive-excludes.txt
+│   ├── fix-bluetooth-audio.sh
+│   ├── hdd-ingest.sh
+│   ├── mds_backup.env.example
+│   ├── mds_backup.sh
+│   ├── mds_pull.sh
+│   ├── restore-fedora-data.sh
+│   ├── rgb-off.sh
+│   └── rsync-excludes.txt
+├── .gitignore
+├── README.md
+└── setup-fedora.sh
 ```
 
-### Device-Specific Configuration
+## Fedora Setup
 
-**Laptop optimization:**
+`setup-fedora.sh` is the main provisioning script.
+
+It performs the common Fedora configuration required by the workstation systems, including:
+
+- system updates;
+- RPM Fusion configuration;
+- Flathub configuration;
+- development and command-line tools;
+- desktop applications;
+- Tailscale;
+- container tooling;
+- common utilities;
+- host-specific configuration.
+
+Run the setup from the repository root:
+
 ```bash
-./hosts/laptop.sh
-```
-Enables battery conservation (80% threshold), CPU frequency scaling, touchpad tap-to-click.
-
-**Desktop gaming setup:**
-```bash
-./hosts/desktop.sh
-```
-Installs NVIDIA drivers, CUDA, enables GPU power management.
-
-### Manual Network Setup (Troubleshooting)
-
-**Check Tailscale status:**
-```bash
-tailscale status
-```
-
-**Manually authenticate with Tailscale:**
-```bash
-sudo tailscale up --operator=$USER
+chmod +x setup-fedora.sh
+./setup-fedora.sh
 ```
 
-**Mount Proxmox NAS manually:**
-```bash
-ls /mnt/proxmox_uni  # Triggers automount
+The setup script detects the system chassis and executes the appropriate script from:
+
+```text
+hosts/fedora/
 ```
 
-**Test network latency to hub:**
-```bash
-ping -c 1 100.70.100.118  # Replace with your hub IP
+## Host Configuration
+
+### Desktop
+
+`hosts/fedora/desktop.sh` configures the primary workstation.
+
+This includes:
+
+- NVIDIA drivers through RPM Fusion;
+- NVIDIA CUDA support;
+- NVIDIA power-management configuration;
+- kernel module rebuilding;
+- OpenRGB and I2C support;
+- performance power profile;
+- university working directories.
+
+A reboot is recommended after the NVIDIA configuration has completed.
+
+### Laptop
+
+`hosts/fedora/laptop.sh` configures the mobile workstation.
+
+This includes:
+
+- power profile configuration;
+- Lenovo IdeaPad battery conservation where supported;
+- touchpad configuration;
+- university working directories.
+
+The balanced power profile is used by default.
+
+### Server
+
+`hosts/fedora/server.sh` configures the home mini PC running Fedora Server.
+
+This includes:
+
+- Podman;
+- Podman Compose;
+- Docker-compatible Podman tooling;
+- persistent user services;
+- rsync;
+- rclone;
+- NFS utilities.
+
+`podman-docker` provides Docker-compatible commands for workflows that expect the `docker` command while containers continue to run through Podman.
+
+## Networking
+
+Tailscale provides private connectivity between systems when they are not on the same local network.
+
+SSH configuration templates are stored under:
+
+```text
+config/ssh/
 ```
 
-## 🐛 Troubleshooting
+with separate configurations for the desktop and laptop so that each machine can use its own SSH identity.
 
-### Setup Script Issues
+## University Data Workflow
 
-#### Problem: `chmod: permission denied` when making scripts executable
+University work is maintained locally on the workstation systems rather than being worked on directly over network storage.
+
+The mini PC provides a synchronisation and snapshot destination, while an external drive provides an additional local backup.
+
+This allows university work to remain available when the home server or Internet connection is unavailable.
+
+### Backup
+
+The primary backup workflow is:
+
 ```bash
-# Solution: Use full paths or ensure you're in the correct directory
-cd ~/cachyos-setup
-chmod +x *.sh hosts/*.sh
+scripts/mds_backup.sh
 ```
 
-#### Problem: `setup-cachyos.sh` not detecting device type (desktop/laptop)
-```bash
-# Verify your device chassis type
-hostnamectl chassis
+The script manages synchronisation and backup operations between the workstation, mini PC, and external storage.
 
-# If incorrect, manually run the appropriate script:
-./hosts/desktop.sh    # For desktop
-./hosts/laptop.sh     # For laptop
+The workflow is designed so that local and external-drive backups can continue when the mini PC cannot be reached.
+
+### Pull
+
+To retrieve newer university data from the mini PC:
+
+```bash
+scripts/mds_pull.sh
 ```
 
-#### Problem: `paru: command not found`
+The script selects an appropriate connection method and synchronises newer files into the local university working directory.
+
+### External HDD Ingest
+
+`scripts/hdd-ingest.sh` imports the current university working copy from the external MDS vault into the desktop working directory.
+
+After ingestion, the normal backup workflow can be run to propagate the updated data to the remaining backup destinations.
+
+### Restore
+
+`scripts/restore-fedora-data.sh` restores files from a backup onto a freshly installed Fedora system:
+
 ```bash
-# Paru is installed during setup, but if missing, install manually:
-sudo pacman -S --needed base-devel
-git clone https://aur.archlinux.org/paru.git
-cd paru && makepkg -si
+./scripts/restore-fedora-data.sh /path/to/backup
 ```
 
----
+To preview the restore without changing any files:
 
-### Tailscale & Network Issues
-
-#### Problem: `Tailscale login required` keeps appearing
 ```bash
-# Ensure Tailscale service is running
-sudo systemctl status tailscaled
-
-# If not, start it:
-sudo systemctl enable --now tailscaled
-
-# Manual authentication (if auto-prompt fails):
-sudo tailscale up --operator=$USER
-# Follow the URL it prints
+DRY_RUN=1 ./scripts/restore-fedora-data.sh /path/to/backup
 ```
 
-#### Problem: `tailscale status` shows disconnected or "*Stopped*"
-```bash
-# Restart the Tailscale service
-sudo systemctl restart tailscaled
+## Backup Configuration
 
-# Wait a few seconds and check again
-tailscale status
+Runtime configuration for the MDS backup system is stored in:
+
+```text
+scripts/mds_backup.env
 ```
 
-#### Problem: `Proxmox mount not reachable`
-```bash
-# 1. Check if Tailscale is connected
-tailscale status
+This file is intentionally excluded from Git.
 
-# 2. Test latency to your NAS/hub (use your actual IP)
-ping 100.70.100.118
+An example configuration is provided:
 
-# 3. Check if mount point exists and is empty
-ls -la /mnt/proxmox_uni
-
-# 4. Try manual mount trigger
-ls /mnt/proxmox_uni  # This triggers systemd automount
-
-# 5. If still failing, check dmesg for NFS errors
-dmesg | tail -20
+```text
+scripts/mds_backup.env.example
 ```
 
----
+To create a local configuration:
 
-### File Sync Issues
-
-#### Problem: `uni-sync.sh` reports "Proxmox University mount not reachable or empty"`
 ```bash
-# Solution: Ensure Tailscale is online and NAS is accessible
-tailscale status
-ping 100.70.100.118
-
-# Then retry sync
-./uni-sync.sh
+cp scripts/mds_backup.env.example scripts/mds_backup.env
 ```
 
-#### Problem: Files sync but then immediately re-sync (false positives)
-```bash
-# This is usually time skew on network shares
-# The script already uses --modify-window=1 to compensate
-# If still happening, check NAS clock:
-ssh user@nas-ip 'date'  # Compare with your system time
+Then edit the values for the local system.
+
+### Exclusions
+
+Two exclusion files are maintained:
+
+```text
+scripts/rsync-excludes.txt
+scripts/archive-excludes.txt
 ```
 
-#### Problem: Sync is slow or times out
-```bash
-# Check network speed
-iperf3 -c 100.70.100.118  # If iperf3 server running on NAS
+These control which files and directories are excluded from normal synchronisation and archival operations.
 
-# Manually sync with verbose output to see where it hangs
-rsync -avzu --modify-window=1 /mnt/proxmox_uni/ ~/Documents/University/
+## Shell Configuration
+
+Common Zsh configuration is stored under:
+
+```text
+hosts/common/
 ```
 
----
+This includes:
 
-### Backup & USB Issues
+- `.zshrc`;
+- Powerlevel10k configuration;
+- development aliases;
+- university backup aliases;
+- environment setup.
 
-#### Problem: `backup_uni.sh` reports "Error: Plug in the USB drive"`
-```bash
-# 1. Check if USB is detected
-lsblk  # Look for your USB device
+The configuration is shared between the Fedora workstation systems where appropriate.
 
-# 2. If detected but not mounted, mount manually
-sudo mount /dev/sda1 /run/media/michael/Ventoy
+## Utility Scripts
 
-# 3. If mount point doesn't exist, create it
-sudo mkdir -p /run/media/michael/Ventoy
-sudo mount /dev/sda1 /run/media/michael/Ventoy
+### Bluetooth Audio
 
-# 4. Verify the backup destination exists
-mkdir -p /run/media/michael/Ventoy/michael_backup
+```text
+scripts/fix-bluetooth-audio.sh
 ```
 
-#### Problem: `rsync: write failed` during backup
-```bash
-# Likely USB is full or read-only
-# Check USB space:
-df -h /run/media/michael/Ventoy
+Contains Bluetooth audio configuration used by supported workstation systems.
 
-# Check if USB is write-protected (physically check the switch)
+### RGB Control
 
-# If USB is full, remove old backups:
-rm -rf /run/media/michael/Ventoy/michael_backup_old/
+```text
+scripts/rgb-off.sh
 ```
 
-#### Problem: USB doesn't automount after plugging in
-```bash
-# Manually trigger mount
-sudo mount /dev/sda1 /run/media/michael/Ventoy
+Provides a simple RGB control utility for the desktop.
 
-# If that works, your automount config may need adjustment
-# Check fstab or udev rules (advanced troubleshooting)
+## Validation
+
+Shell scripts can be checked with ShellCheck before committing changes:
+
+```bash
+shellcheck \
+    setup-fedora.sh \
+    hosts/fedora/desktop.sh \
+    hosts/fedora/laptop.sh \
+    hosts/fedora/server.sh \
+    scripts/fix-bluetooth-audio.sh \
+    scripts/hdd-ingest.sh \
+    scripts/mds_pull.sh \
+    scripts/mds_backup.sh \
+    scripts/restore-fedora-data.sh
 ```
 
----
+Git whitespace errors can be checked with:
 
-### Laptop-Specific Issues
-
-#### Problem: Battery conservation mode not working (IdeaPad)
 ```bash
-# Check if the sysfs path exists
-cat /sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/conservation_mode
-
-# If path doesn't exist, check alternative
-find /sys -name "conservation_mode" 2>/dev/null
-
-# Manually enable if path is different
-echo 1 | sudo tee /sys/path/to/conservation_mode
+git diff --check
 ```
 
-#### Problem: CPU frequency scaling not working
-```bash
-# Verify auto-cpufreq is running
-sudo systemctl status auto-cpufreq
+## Historical CachyOS Configuration
 
-# If not, restart it
-sudo systemctl restart auto-cpufreq
+This repository was originally used to configure CachyOS.
 
-# Check current governor
-cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+The final version of the previous CachyOS configuration is preserved in the Git tag:
+
+```text
+cachyos-final
 ```
 
-#### Problem: Touchpad tap-to-click not enabled
+It can be inspected without retaining obsolete CachyOS scripts in the current Fedora configuration:
+
 ```bash
-# KDE method 1: Open KDE Touchpad settings GUI
-kcmshell5 kcm_touchpad
-
-# KDE method 2: Edit config directly
-# Add to ~/.config/touchpadrc if it doesn't exist
-mkdir -p ~/.config
-echo -e "[Touchpad]\nTapToClick=true" >> ~/.config/touchpadrc
-
-# Verify it's set
-cat ~/.config/touchpadrc | grep TapToClick
+git show cachyos-final
 ```
 
----
+or checked out temporarily:
 
-### Desktop/GPU Issues
-
-#### Problem: NVIDIA driver `not found` or `CUDA not installing`
 ```bash
-# Wait for kernel to finish rebuilding (can take 5-10 minutes)
-# You'll see:
-# dkms: doing automatic module rebuild...
-
-# Check if driver is loaded
-lsmod | grep nvidia
-
-# Force rebuild if needed
-sudo dkms install nvidia-cachyos -k $(uname -r)
-```
-#### Problem: Screen goes black after NVIDIA setup
-```bash
-# Switch to TTY and troubleshoot
-# Press Ctrl+Alt+F2 to get a terminal
-
-# Check X11 logs
-cat ~/.local/share/xorg/Xvfb-0.log
-
-# Or Wayland logs
-journalctl -ex
-
-# Reinstall drivers if corrupted
-sudo pacman -S --noconfirm --force nvidia-cachyos-dkms
-```
-#### Problem: CUDA not found when compiling
-```bash
-# Add CUDA to PATH in ~/.bashrc or ~/.zshrc
-export PATH=/opt/cuda/bin:$PATH
-export LD_LIBRARY_PATH=/opt/cuda/lib64:$LD_LIBRARY_PATH
-
-# Then source it
-source ~/.bashrc
+git switch --detach cachyos-final
 ```
 
----
+Return to the Fedora development branch with:
 
-### Smart Resume Issues
-
-#### Problem: `smart-resume.sh` errors about `mutagen` not found
 ```bash
-# Install Mutagen (if not installed during setup)
-paru -S --needed mutagen
-
-# Create a Mutagen sync session (if needed)
-mutagen sync create --name uni-sync-$(hostname) ~/Documents/University /mnt/proxmox_uni
+git switch fedora-rework
 ```
 
-#### Problem: Cron job for `smart-resume.sh` not running
-```bash
-# Check if cron is enabled
-sudo systemctl status crond
+## Security
 
-# If not, enable it
-sudo systemctl enable --now crond
+Secrets and machine-specific environment files should not be committed to the repository.
 
-# Verify your crontab (should show the job):
-crontab -l
+The real:
 
-# Check cron logs for errors
-sudo journalctl -u crond -n 20
+```text
+scripts/mds_backup.env
 ```
 
----
+is ignored by Git. Only the example configuration should be committed.
 
-### General System Issues
+Before committing changes, sensitive files can be checked with:
 
-#### Problem: "Permission denied" when running scripts
 ```bash
-# Ensure scripts are executable
-chmod +x setup-cachyos.sh uni-sync.sh backup_uni.sh smart-resume.sh
-chmod +x hosts/*.sh
-
-# Run with bash if all else fails
-bash ./setup-cachyos.sh
+git status --ignored
 ```
 
-#### Problem: `pacman: command not found` (shouldn't happen on CachyOS)
-```bash
-# This means CachyOS isn't properly installed
-# Reinstall or verify: grep -i cachyos /etc/os-release
-```
+## License
 
-#### Problem: Out of disk space during setup
-```bash
-# Check disk usage
-df -h
+This project is licensed under the MIT License.
 
-# Clean pacman cache
-sudo pacman -Sc
-
-# Remove old package versions (aggressive)
-sudo pacman -Scc
-```
-
-## 📝 License
-
-This project is licensed under the **MIT License** — feel free to use, modify, and distribute these scripts.
-
-### MIT License Summary
 Copyright (c) 2026 Michael McMillan
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-- The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-**THE SOFTWARE IS PROVIDED "AS IS"**, without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement. In no event shall the authors or copyright holders be liable for any claim, damages or other liability, whether in an action of contract, tort or otherwise, arising from, out of or in connection with the software or the use or other dealings in the software.
-
----
-
-**TL;DR:** Use these scripts freely. Attribution appreciated but not required.

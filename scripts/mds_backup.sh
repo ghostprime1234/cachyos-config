@@ -1,11 +1,26 @@
 #!/usr/bin/env bash
 
-# Michael's MDS Hybrid Backup
-# Daily incremental snapshots / weekly compressed archive
-# Bidirectional laptop ↔ Mini PC synchronisation
-# Laptop → USB vault replication
+# ==============================================================================
+# MDS WORKSTATION SYNCHRONISATION
+#
+# Desktop ↔ Fedora server live-file synchronisation
+# Desktop → USB vault live-work replication
+# Fedora server handles snapshots, archives, NAS and OneDrive backups
+# ==============================================================================
 
 set -Eeuo pipefail
+
+DRY_RUN=false
+
+if [[ "${1:-}" == "--dry-run" ]]; then
+    DRY_RUN=true
+    echo "=== DRY RUN MODE ==="
+fi
+
+RSYNC_DRY_ARGS=()
+if [[ "$DRY_RUN" == true ]]; then
+    RSYNC_DRY_ARGS+=(--dry-run)
+fi
 
 # ==============================================================================
 # 0. ENVIRONMENT CONFIGURATION
@@ -24,22 +39,15 @@ set -a
 source "$ENV_FILE"
 set +a
 
-# Ensure all required configuration variables exist.
 REQUIRED_VARIABLES=(
     SOURCE
-    SNAPSHOT_ROOT
-    ARCHIVE_ROOT
     LOCAL_VAULT
     EXCLUDES
-    ARCHIVE_EXCLUDES
     STATUS_FILE
     REMOTE_USER
     REMOTE_HOST
     REMOTE_PATH
     SSH_KEY
-    REMOTE_SYNC_SCRIPT
-    DAILY_RETENTION_DAYS
-    FULL_RETENTION_DAYS
 )
 
 for variable in "${REQUIRED_VARIABLES[@]}"; do
@@ -50,18 +58,11 @@ for variable in "${REQUIRED_VARIABLES[@]}"; do
 done
 
 SOURCE="${SOURCE%/}"
-SNAPSHOT_ROOT="${SNAPSHOT_ROOT%/}"
-ARCHIVE_ROOT="${ARCHIVE_ROOT%/}"
 LOCAL_VAULT="${LOCAL_VAULT%/}"
 REMOTE_PATH="${REMOTE_PATH%/}"
 
-DOW="$(date +%u)"
-TIMESTAMP="$(date +%Y%m%d)"
-
-REMOTE_SNAPSHOTS="${REMOTE_PATH}/snapshots"
-
 # ==============================================================================
-# 1. NETWORK AND PATH CONFIGURATION
+# 1. NETWORK / PATH CONFIGURATION
 # ==============================================================================
 
 SSH_ARGS=(
@@ -72,12 +73,10 @@ SSH_ARGS=(
 
 SSH_DESTINATION="${REMOTE_USER}@${REMOTE_HOST}"
 REMOTE_TARGET="${SSH_DESTINATION}:${REMOTE_PATH}"
+
 SSH_TRANSPORT="ssh -i $SSH_KEY -o BatchMode=yes -o ConnectTimeout=15"
 
 USB_LIVE_WORK="${LOCAL_VAULT}/Live_Work"
-USB_ARCHIVES="${LOCAL_VAULT}/archives"
-USB_SNAPSHOTS="${LOCAL_VAULT}/snapshots"
-REMOTE_SNAPSHOTS="${REMOTE_PATH}/snapshots"
 
 # ==============================================================================
 # 2. GUARDIAN LAYER
@@ -94,7 +93,7 @@ fi
 if [[ -z "$(find "$SOURCE" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
     echo "⚠ CRITICAL ERROR: Source directory is empty:"
     echo "  $SOURCE"
-    echo "Aborting to prevent accidental deletion of backup data."
+    echo "Aborting to prevent accidental deletion of remote data."
     exit 1
 fi
 
@@ -104,28 +103,15 @@ if [[ ! -f "$EXCLUDES" ]]; then
     exit 1
 fi
 
-if [[ ! -f "$ARCHIVE_EXCLUDES" ]]; then
-    echo "⚠ CRITICAL ERROR: Archive exclusions file does not exist:"
-    echo "  $ARCHIVE_EXCLUDES"
-    exit 1
-fi
-
 if [[ ! -f "$SSH_KEY" ]]; then
     echo "⚠ CRITICAL ERROR: SSH private key does not exist:"
     echo "  $SSH_KEY"
     exit 1
 fi
 
-# This catches the accidental nesting that caused:
-# /mnt/Data/University/University/University
+# Protect against accidental University/University nesting.
 if [[ -d "${SOURCE}/University" ]]; then
-    echo "⚠ CRITICAL ERROR: An unexpected nested University directory exists:"
-    echo "  ${SOURCE}/University"
-    echo
-    echo "This usually indicates that rsync previously copied the University"
-    echo "directory itself into /mnt/Data/University."
-    echo
-    echo "Move or reconcile this directory before running the backup:"
+    echo "⚠ CRITICAL ERROR: Unexpected nested University directory exists:"
     echo "  ${SOURCE}/University"
     exit 1
 fi
@@ -136,137 +122,101 @@ if ssh "${SSH_ARGS[@]}" "$SSH_DESTINATION" \
     "test -d '$REMOTE_PATH'" 2>/dev/null; then
 
     REMOTE_AVAILABLE=true
-    echo "✓ Mini PC is available."
+    echo "✓ Fedora server is available."
 else
-    echo "⚠ WARNING: Mini PC is unavailable."
+    echo "⚠ WARNING: Fedora server is unavailable."
     echo "Remote synchronisation will be skipped."
-    echo "Local and USB backups will continue."
 fi
 
-if ssh "${SSH_ARGS[@]}" "$SSH_DESTINATION" \
-    "test -d '${REMOTE_PATH}/University'"; then
+if [[ "$REMOTE_AVAILABLE" == true ]]; then
+    if ssh "${SSH_ARGS[@]}" "$SSH_DESTINATION" \
+        "test -d '${REMOTE_PATH}/University'"; then
 
-    echo "⚠ CRITICAL ERROR: An unexpected nested University directory exists remotely:"
-    echo "  ${SSH_DESTINATION}:${REMOTE_PATH}/University"
-    echo
-    echo "Move or reconcile the remote nested directory before synchronising."
-    exit 1
-fi
-
-if [[ ! "$DAILY_RETENTION_DAYS" =~ ^[0-9]+$ ]] ||
-   [[ ! "$FULL_RETENTION_DAYS" =~ ^[0-9]+$ ]]; then
-    echo "⚠ CRITICAL ERROR: Retention values must be non-negative integers."
-    exit 1
-fi
-
-mkdir -p "$SNAPSHOT_ROOT"
-mkdir -p "$ARCHIVE_ROOT"
-
-if [[ "$ARCHIVE_ROOT" == "$SNAPSHOT_ROOT" ]]; then
-    echo "⚠ CRITICAL ERROR: ARCHIVE_ROOT and SNAPSHOT_ROOT must be different."
-    exit 1
+        echo "⚠ CRITICAL ERROR: Unexpected nested University directory exists remotely:"
+        echo "  ${SSH_DESTINATION}:${REMOTE_PATH}/University"
+        exit 1
+    fi
 fi
 
 # ==============================================================================
-# 3. BIDIRECTIONAL MINI PC SYNC
+# 3. DESKTOP ↔ FEDORA SERVER
 # ==============================================================================
 
-# Important trailing-slash behaviour:
-#
-#   "$SOURCE/"         = contents of /mnt/Data/University
-#   "$REMOTE_TARGET/"  = contents of /home/michael/University
-#
-# Without those trailing slashes, rsync copies the University directory itself,
-# which creates University/University nesting.
-
-echo
 if [[ "$REMOTE_AVAILABLE" == true ]]; then
 
-    echo "--- Step 1a: Pulling newer data from Mini PC ---"
+    echo
+    echo "--- Step 1a: Pulling newer files from Fedora server ---"
 
     if ! rsync -avu \
+        "${RSYNC_DRY_ARGS[@]}" \
         -e "$SSH_TRANSPORT" \
         --exclude-from="$EXCLUDES" \
-        --exclude="/snapshots/" \
-        --exclude="/archives/" \
-        --exclude="/legacy_full_snapshots/" \
-        --exclude="/snapshot/" \
         "$REMOTE_TARGET/" \
         "$SOURCE/"; then
 
-        echo "⚠ CRITICAL ERROR: Mini PC pull failed."
-        echo "The remaining sync stages will not run."
+        echo "⚠ CRITICAL ERROR: Server pull failed."
         exit 1
     fi
 
     echo
-    echo "--- Step 1b: Pushing local data to Mini PC ---"
+    echo "--- Step 1b: Pushing desktop files to Fedora server ---"
 
     if ! rsync -av \
+        "${RSYNC_DRY_ARGS[@]}" \
         -e "$SSH_TRANSPORT" \
         --exclude-from="$EXCLUDES" \
-        --exclude="/snapshots/" \
-        --exclude="/archives/" \
-        --exclude="/legacy_full_snapshots/" \
-        --exclude="/snapshot/" \
         "$SOURCE/" \
         "$REMOTE_TARGET/"; then
 
-        echo "⚠ CRITICAL ERROR: Mini PC push failed."
-        echo "Remote cleanup has been skipped to protect existing data."
+        echo "⚠ CRITICAL ERROR: Server push failed."
+        echo "Remote cleanup has been skipped."
         exit 1
     fi
 
     echo
-    echo "--- Step 1c: Removing discarded files from Mini PC ---"
+    echo "--- Step 1c: Reconciling deleted files on Fedora server ---"
 
     if ! rsync -av \
+        "${RSYNC_DRY_ARGS[@]}" \
         --delete \
         --existing \
         -e "$SSH_TRANSPORT" \
         --exclude-from="$EXCLUDES" \
-        --exclude="/snapshots/" \
-        --exclude="/archives/" \
-        --exclude="/legacy_full_snapshots/" \
-        --exclude="/snapshot/" \
         "$SOURCE/" \
         "$REMOTE_TARGET/"; then
 
-        echo "⚠ CRITICAL ERROR: Mini PC cleanup failed."
+        echo "⚠ CRITICAL ERROR: Remote cleanup failed."
         exit 1
     fi
 fi
 
 # ==============================================================================
-# 4. USB VAULT SYNC
+# 4. USB VAULT LIVE-WORK COPY
 # ==============================================================================
 
 if [[ -d "$LOCAL_VAULT" && -w "$LOCAL_VAULT" ]]; then
-    mkdir -p "$USB_LIVE_WORK"
+
+    if [[ "$DRY_RUN" != true ]]; then
+        mkdir -p "$USB_LIVE_WORK"
+    fi
 
     echo
-    echo "--- Step 2a: Pushing data to USB vault ---"
+    echo "--- Step 2a: Pushing live work to USB vault ---"
 
     if rsync -av \
+        "${RSYNC_DRY_ARGS[@]}" \
         --exclude-from="$EXCLUDES" \
-        --exclude="/snapshots/" \
-        --exclude="/archives/" \
-        --exclude="/legacy_full_snapshots/" \
-        --exclude="/snapshot/" \
         "$SOURCE/" \
         "$USB_LIVE_WORK/"; then
 
         echo
-        echo "--- Step 2b: Removing discarded files from USB vault ---"
+        echo "--- Step 2b: Reconciling deleted files on USB vault ---"
 
         if ! rsync -av \
+            "${RSYNC_DRY_ARGS[@]}" \
             --delete \
             --existing \
             --exclude-from="$EXCLUDES" \
-            --exclude="/snapshots/" \
-            --exclude="/archives/" \
-            --exclude="/legacy_full_snapshots/" \
-            --exclude="/snapshot/" \
             "$SOURCE/" \
             "$USB_LIVE_WORK/"; then
 
@@ -274,252 +224,32 @@ if [[ -d "$LOCAL_VAULT" && -w "$LOCAL_VAULT" ]]; then
         fi
     else
         echo "⚠ WARNING: USB vault push failed."
-        echo "USB cleanup has been skipped to protect existing data."
+        echo "USB cleanup was skipped."
     fi
+
 else
     echo
-    echo "⏸ INFO: USB vault is unavailable or read-only:"
+    echo "⏸ USB vault unavailable or read-only:"
     echo "  $LOCAL_VAULT"
-    echo "Skipping USB live-work replication."
 fi
 
 # ==============================================================================
-# 5. HYBRID ARCHIVE LOGIC
+# 5. STATUS
 # ==============================================================================
 
-# Find a completed full archive created within the previous six days.
-RECENT_FULL="$(
-    find "$ARCHIVE_ROOT" \
-        -maxdepth 1 \
-        -type f \
-        -name "MDS_Full_Snapshot_*.tar.gz" \
-        -mtime -6 \
-        -print \
-        -quit 2>/dev/null || true
-)"
+if [[ "$DRY_RUN" != true ]]; then
+    mkdir -p "$(dirname "$STATUS_FILE")"
 
-TODAY_FULL="${ARCHIVE_ROOT}/MDS_Full_Snapshot_${TIMESTAMP}.tar.gz"
-
-if [[ ! -f "$TODAY_FULL" ]] && [[ "$DOW" -eq 7 || -z "$RECENT_FULL" ]]; then
-    echo
-    echo "--- Step 3: Creating selective weekly full archive ---"
-
-    BACKUP_NAME="MDS_Full_Snapshot_${TIMESTAMP}.tar.gz"
-    BACKUP_PATH="${ARCHIVE_ROOT}/${BACKUP_NAME}"
-    TEMP_BACKUP="${BACKUP_PATH}.partial"
-
-    rm -f -- "$TEMP_BACKUP"
-
-    echo "Source:"
-    echo "  $SOURCE"
-    echo "Archive:"
-    echo "  $BACKUP_PATH"
-    echo "Exclusions:"
-    echo "  $ARCHIVE_EXCLUDES"
-
-    if tar \
-        --create \
-        --file="$TEMP_BACKUP" \
-        --use-compress-program="pigz" \
-        --exclude-from="$ARCHIVE_EXCLUDES" \
-        --directory="$SOURCE" \
-        .; then
-
-        mv -- "$TEMP_BACKUP" "$BACKUP_PATH"
-
-        echo "✓ Weekly full archive created:"
-        echo "  $BACKUP_PATH"
-    else
-        rm -f -- "$TEMP_BACKUP"
-
-        echo "⚠ CRITICAL ERROR: Weekly archive creation failed."
-        echo "No incomplete archive has been retained."
-        exit 1
-    fi
-
-    # Delete expired completed archives.
-    find "$ARCHIVE_ROOT" \
-        -maxdepth 1 \
-        -type f \
-        -name "MDS_Full_Snapshot_*.tar.gz" \
-        -mtime +"$FULL_RETENTION_DAYS" \
-        -delete
-
-    # Clean up stale incomplete archives.
-    find "$ARCHIVE_ROOT" \
-        -maxdepth 1 \
-        -type f \
-        -name "*.partial" \
-        -mtime +1 \
-        -delete
-
-else
-    echo
-    echo "--- Step 3: Creating incremental hard-link snapshot ---"
-
-    DEST="${SNAPSHOT_ROOT}/MDS_Daily_${TIMESTAMP}"
-    LATEST="${SNAPSHOT_ROOT}/latest"
-
-    mkdir -p "$DEST"
-
-    RSYNC_SNAPSHOT_ARGS=(
-        -av
-        --delete
-        --exclude=/snapshots/
-        --exclude=/archives/
-        --exclude=/legacy_full_snapshots/
-        --exclude=/snapshot/
-        --exclude-from="$EXCLUDES"
-    )
-
-    if [[ -e "$LATEST" ]]; then
-        RSYNC_SNAPSHOT_ARGS+=(--link-dest="$LATEST")
-    else
-        echo "ℹ No previous daily snapshot found."
-        echo "The first daily snapshot will contain full file copies."
-    fi
-
-    if rsync \
-        "${RSYNC_SNAPSHOT_ARGS[@]}" \
-        "$SOURCE/" \
-        "$DEST/"; then
-
-        ln -sfn "$(basename "$DEST")" "$LATEST"
-
-        echo "✓ Incremental snapshot created:"
-        echo "  $DEST"
-    else
-        echo "⚠ CRITICAL ERROR: Incremental snapshot creation failed."
-        exit 1
-    fi
+    {
+        echo "Last MDS Sync: $(date --iso-8601=seconds)"
+        echo "Source: $SOURCE"
+        echo "Remote: ${SSH_DESTINATION}:${REMOTE_PATH}"
+    } > "$STATUS_FILE"
 fi
-
-# Delete expired daily snapshots whether this run was full or incremental.
-find "$SNAPSHOT_ROOT" \
-    -maxdepth 1 \
-    -type d \
-    -name "MDS_Daily_*" \
-    -mtime +"$DAILY_RETENTION_DAYS" \
-    -exec rm -rf -- {} +
-
-# ==============================================================================
-# 6. SNAPSHOT REPLICATION
-# ==============================================================================
-
-# ------------------------------------------------------------------------------
-# 6a. Copy snapshots to USB
-# ------------------------------------------------------------------------------
-
-if [[ -d "$LOCAL_VAULT" && -w "$LOCAL_VAULT" ]]; then
-    echo
-    echo "--- Step 4a: Copying snapshots to USB vault ---"
-
-    mkdir -p "$USB_SNAPSHOTS"
-
-    if ! rsync -av \
-        --delete \
-        "$SNAPSHOT_ROOT/" \
-        "$USB_SNAPSHOTS/"; then
-
-        echo "⚠ WARNING: Snapshot replication to USB failed."
-    fi
-else
-    echo
-    echo "⏸ INFO: USB vault unavailable; snapshot USB replication skipped."
-fi
-
-# ------------------------------------------------------------------------------
-# 6b. Copy completed weekly archives to USB
-# ------------------------------------------------------------------------------
-
-if [[ -d "$LOCAL_VAULT" && -w "$LOCAL_VAULT" ]]; then
-    echo
-    echo "--- Step 4b: Copying weekly archives to USB vault ---"
-
-    mkdir -p "$USB_ARCHIVES"
-
-    if ! rsync -av \
-        --include="MDS_Full_Snapshot_*.tar.gz" \
-        --exclude="*" \
-        "$ARCHIVE_ROOT/" \
-        "$USB_ARCHIVES/"; then
-
-        echo "⚠ WARNING: Archive replication to USB failed."
-    fi
-else
-    echo
-    echo "⏸ INFO: USB vault unavailable or read-only."
-    echo "Weekly archives remain available locally:"
-    echo "  $ARCHIVE_ROOT"
-fi
-
-# ------------------------------------------------------------------------------
-# 6c. Copy incremental snapshots to Mini PC
-# ------------------------------------------------------------------------------
 
 echo
-if [[ "$REMOTE_AVAILABLE" == true ]]; then
-    echo "--- Step 4c: Copying incremental snapshots to Mini PC ---"
-
-    if ssh "${SSH_ARGS[@]}" "$SSH_DESTINATION" \
-        "mkdir -p '$REMOTE_SNAPSHOTS'"; then
-
-        if ! rsync -av \
-            --delete \
-            -e "$SSH_TRANSPORT" \
-            "$SNAPSHOT_ROOT/" \
-            "${SSH_DESTINATION}:${REMOTE_SNAPSHOTS}/"; then
-
-            echo "⚠ WARNING: Snapshot replication to Mini PC failed."
-        fi
-    else
-        echo "⚠ WARNING: Could not create or access remote snapshot directory:"
-        echo "  ${SSH_DESTINATION}:${REMOTE_SNAPSHOTS}"
-    fi
-else
-    echo "⏸ Mini PC unavailable; remote snapshot replication skipped."
-fi
-
-# ==============================================================================
-# 7. REMOTE LAB SYNC
-# ==============================================================================
-
-echo
-if [[ "$REMOTE_AVAILABLE" == true ]]; then
-    echo "--- Step 5: Triggering global lab sync on Mini PC ---"
-
-    printf -v REMOTE_SCRIPT_QUOTED '%q' "$REMOTE_SYNC_SCRIPT"
-
-    if ssh "${SSH_ARGS[@]}" "$SSH_DESTINATION" \
-        "nohup $REMOTE_SCRIPT_QUOTED >/dev/null 2>&1 </dev/null &"; then
-
-        echo "✓ Remote lab sync started."
-    else
-        echo "⚠ WARNING: Failed to start remote lab sync."
-    fi
-else
-    echo "⏸ Mini PC unavailable; global lab sync skipped."
-fi
-
-
-# ==============================================================================
-# 8. STATUS
-# ==============================================================================
-
-mkdir -p "$(dirname "$STATUS_FILE")"
-
-{
-    echo "Last Global Sync: $(date --iso-8601=seconds)"
-    echo "Source: $SOURCE"
-    echo "Remote: ${SSH_DESTINATION}:${REMOTE_PATH}"
-    echo "Snapshot Root: $SNAPSHOT_ROOT"
-    echo "Archive Root: $ARCHIVE_ROOT"
-} > "$STATUS_FILE"
-
 echo "============================================================"
-echo "✓ MDS backup and synchronisation completed successfully"
-echo "  Source:    $SOURCE"
-echo "  Remote:    ${SSH_DESTINATION}:${REMOTE_PATH}"
-echo "  Snapshots: $SNAPSHOT_ROOT"
-echo "  Archives:  $ARCHIVE_ROOT"
+echo "✓ MDS workstation synchronisation completed"
+echo "  Source: $SOURCE"
+echo "  Remote: ${SSH_DESTINATION}:${REMOTE_PATH}"
 echo "============================================================"

@@ -1,28 +1,237 @@
 #!/usr/bin/env bash
-# setup-fedora.sh - Michael's Fedora Migration & Uni Sync
+# Fedora setup for desktop, laptop, and server systems.
+#
+# Usage:
+#   ./setup-fedora.sh desktop
+#   ./setup-fedora.sh laptop
+#   ./setup-fedora.sh server
 
 set -euo pipefail
 
-CHASSIS=$(hostnamectl chassis 2>/dev/null || echo "unknown")
-echo "Starting Fedora setup on a $CHASSIS..."
+REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-# 1. System update
+# ------------------------------------------------------------
+# Role selection
+# ------------------------------------------------------------
+
+ROLE="${1:-}"
+
+if [[ -z "$ROLE" ]]; then
+    # Read Fedora variant information.
+    # shellcheck disable=SC1091
+    source /etc/os-release
+
+    if [[ "${VARIANT_ID:-}" == "server" ]]; then
+        ROLE="server"
+    else
+        CHASSIS="$(hostnamectl chassis 2>/dev/null || true)"
+
+        case "$CHASSIS" in
+            desktop)
+                ROLE="desktop"
+                ;;
+            laptop)
+                ROLE="laptop"
+                ;;
+            *)
+                echo "Unable to determine system role automatically."
+                echo "Usage: $0 {desktop|laptop|server}"
+                exit 1
+                ;;
+        esac
+    fi
+fi
+
+case "$ROLE" in
+    desktop|laptop|server)
+        ;;
+    *)
+        echo "Invalid role: $ROLE"
+        echo "Usage: $0 {desktop|laptop|server}"
+        exit 1
+        ;;
+esac
+
+echo "Starting Fedora setup for role: $ROLE"
+
+case "$ROLE" in
+    desktop)
+        DESIRED_HOSTNAME="michael-desktop-fedora"
+        ;;
+    laptop)
+        DESIRED_HOSTNAME="michael-laptop-fedora"
+        ;;
+    server)
+        DESIRED_HOSTNAME="michael-server-fedora"
+        ;;
+esac
+
+# ------------------------------------------------------------
+# Fedora validation
+# ------------------------------------------------------------
+
+if [[ ! -f /etc/fedora-release ]]; then
+    echo "Error: this setup script is intended for Fedora."
+    exit 1
+fi
+
+echo "Configuring hostname for Fedora $ROLE..."
+
+# ------------------------------------------------------------
+# Hostname
+# ------------------------------------------------------------
+#
+if [[ "$(hostnamectl --static)" != "$DESIRED_HOSTNAME" ]]; then
+    echo "Setting hostname to $DESIRED_HOSTNAME..."
+    sudo hostnamectl set-hostname "$DESIRED_HOSTNAME"
+else
+    echo "Hostname already configured."
+fi
+
+
+# ------------------------------------------------------------
+# System update
+# ------------------------------------------------------------
+
+echo "Updating Fedora..."
 sudo dnf upgrade -y
 
-# 2. Enable core repos
-echo "Enabling Flathub..."
-sudo dnf install -y flatpak dnf-plugins-core
-flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+# ------------------------------------------------------------
+# Tailscale repository
+# ------------------------------------------------------------
 
-echo "Enabling RPM Fusion..."
+echo "Configuring Tailscale repository..."
+
+if [[ ! -f /etc/yum.repos.d/tailscale.repo ]]; then
+    sudo dnf config-manager addrepo \
+        --from-repofile=https://pkgs.tailscale.com/stable/fedora/tailscale.repo
+else
+    echo "Tailscale repository already configured."
+fi
+
+# ------------------------------------------------------------
+# Common packages
+# ------------------------------------------------------------
+
+echo "Installing common packages..."
+
 sudo dnf install -y \
-  "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
-  "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+    bc \
+    btop \
+    curl \
+    direnv \
+    dmidecode \
+    fastfetch \
+    git \
+    htop \
+    micro \
+    nfs-utils \
+    psmisc \
+    rclone \
+    ripgrep \
+    rsync \
+    tailscale \
+    tree \
+    vim \
+    wget \
+    zsh \
+    zsh-autosuggestions \
+    zsh-syntax-highlighting
 
-# 3. External repos: VS Code, Brave, Docker
-echo "Adding Microsoft VS Code repo..."
-sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
-sudo tee /etc/yum.repos.d/vscode.repo >/dev/null <<'EOF'
+# ------------------------------------------------------------
+# Tailscale
+# ------------------------------------------------------------
+
+echo "Configuring Tailscale..."
+
+sudo systemctl enable --now tailscaled
+
+if ! tailscale status >/dev/null 2>&1; then
+    echo "Tailscale authentication required."
+    sudo tailscale up --operator="$USER"
+else
+    echo "Tailscale is already online."
+fi
+
+# ------------------------------------------------------------
+# Zsh configuration
+# ------------------------------------------------------------
+
+echo "Installing common Zsh configuration..."
+
+for file in .zshrc .p10k.zsh; do
+    source_file="$REPO_DIR/hosts/common/$file"
+    target="$HOME/$file"
+
+    # Replace an existing file or stale symlink.
+    rm -f "$target"
+
+    ln -s "$source_file" "$target"
+done
+
+ZSH_PATH="$(command -v zsh)"
+
+if [[ "$SHELL" != "$ZSH_PATH" ]]; then
+    echo "Setting Zsh as default shell..."
+    chsh -s "$ZSH_PATH"
+fi
+
+# ------------------------------------------------------------
+# Powerlevel10k
+# ------------------------------------------------------------
+
+echo "Configuring Powerlevel10k..."
+
+P10K_DIR="$HOME/.local/share/powerlevel10k"
+
+if [[ ! -d "$P10K_DIR/.git" ]]; then
+    echo "Installing Powerlevel10k..."
+
+    git clone --depth=1 \
+        https://github.com/romkatv/powerlevel10k.git \
+        "$P10K_DIR"
+else
+    echo "Powerlevel10k already installed."
+fi
+
+# ------------------------------------------------------------
+# Workstation configuration
+# ------------------------------------------------------------
+
+if [[ "$ROLE" == "desktop" || "$ROLE" == "laptop" ]]; then
+
+    echo "Configuring Fedora Workstation repositories..."
+
+    sudo dnf install -y \
+        flatpak \
+        dnf-plugins-core
+
+    # Flathub
+    flatpak remote-add --if-not-exists \
+        flathub \
+        https://dl.flathub.org/repo/flathub.flatpakrepo
+
+    # RPM Fusion
+    echo "Configuring RPM Fusion repositories..."
+
+    if ! rpm -q rpmfusion-free-release >/dev/null 2>&1 ||
+       ! rpm -q rpmfusion-nonfree-release >/dev/null 2>&1; then
+
+        sudo dnf install -y \
+            "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+            "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+    else
+        echo "RPM Fusion repositories already configured."
+    fi
+
+    # VS Code
+    echo "Configuring Microsoft VS Code repository..."
+
+    if [[ ! -f /etc/yum.repos.d/vscode.repo ]]; then
+        sudo rpm --import \
+            https://packages.microsoft.com/keys/microsoft.asc
+
+        sudo tee /etc/yum.repos.d/vscode.repo >/dev/null <<'EOF'
 [code]
 name=Visual Studio Code
 baseurl=https://packages.microsoft.com/yumrepos/vscode
@@ -32,162 +241,151 @@ type=rpm-md
 gpgcheck=1
 gpgkey=https://packages.microsoft.com/keys/microsoft.asc
 EOF
+    else
+        echo "VS Code repository already configured."
+    fi
 
-echo "Adding Brave repo..."
-sudo dnf config-manager addrepo --from-repofile=https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
-sudo rpm --import https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
+    # Brave
+    echo "Configuring Brave repository..."
 
-echo "Adding Docker repo..."
-sudo dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/fedora/docker-ce.repo
+    if [[ ! -f /etc/yum.repos.d/brave-browser.repo ]]; then
+        sudo dnf config-manager addrepo \
+            --from-repofile=https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
 
-# 4. Base essentials
-echo "Installing base tools..."
-sudo dnf install -y \
-  bc \
-  btop \
-  curl \
-  direnv \
-  dmidecode \
-  fastfetch \
-  git \
-  htop \
-  micro \
-  nfs-utils \
-  psmisc \
-  rclone \
-  ripgrep \
-  rsync \
-  tailscale \
-  tree \
-  vim \
-  wget \
-  xdg-user-dirs \
-  zsh \
-  zsh-autosuggestions \
-  zsh-syntax-highlighting
+        sudo rpm --import \
+            https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
+    else
+        echo "Brave repository already configured."
+    fi
 
-# 5. Dev, uni, and desktop apps
-echo "Installing desktop/dev apps..."
-sudo dnf install -y \
-  brave-browser \
-  code \
-  dbeaver \
-  docker-ce \
-  docker-ce-cli \
-  containerd.io \
-  docker-buildx-plugin \
-  docker-compose-plugin \
-  java-21-openjdk \
-  kdenlive \
-  libreoffice \
-  lutris \
-  NetworkManager-openvpn \
-  obs-studio \
-  plasma-browser-integration \
-  poppler-glib \
-  power-profiles-daemon \
-  python3 \
-  python3-defusedxml \
-  python3-packaging \
-  steam \
-  virt-manager \
-  vlc
+    # --------------------------------------------------------
+    # Workstation packages
+    # --------------------------------------------------------
 
-# 6. Flatpak apps
-echo "Installing Flatpaks..."
-flatpak install -y flathub \
-  md.obsidian.Obsidian \
-  net.davidotek.pupgui2 \
-  com.github.IsmaelMartinez.teams_for_linux \
-  com.umlet.Umlet \
-  org.projectlibre.ProjectLibre \
-  com.ticktick.TickTick \
-  com.jetbrains.Toolbox \
-  com.discordapp.Discord \
-  us.zoom.Zoom
+    echo "Installing workstation applications..."
 
-# 7. Tailscale
-echo "Setting up Tailscale..."
-sudo systemctl enable --now tailscaled
+    sudo dnf install -y \
+        brave-browser \
+        code \
+        java-21-openjdk \
+        kdenlive \
+        libreoffice \
+        lutris \
+        NetworkManager-openvpn \
+        obs-studio \
+        plasma-browser-integration \
+        poppler-glib \
+        python3 \
+        python3-defusedxml \
+        python3-packaging \
+        steam \
+        virt-manager \
+        virt-install \
+        libvirt \
+        qemu-kvm \
+        vlc \
+        xdg-user-dirs
 
-if ! tailscale status >/dev/null 2>&1; then
-  echo "Tailscale login required for NAS/Proxmox access."
-  sudo tailscale up --operator="$USER"
-else
-  echo "Tailscale is already online."
+    echo "Configuring virtualization..."
+
+    sudo systemctl enable --now libvirtd
+    sudo usermod -aG libvirt "$USER"
+
+    # --------------------------------------------------------
+    # Flatpak applications
+    # --------------------------------------------------------
+
+    echo "Installing Flatpak applications..."
+
+    flatpak install -y flathub \
+        md.obsidian.Obsidian \
+        net.davidotek.pupgui2 \
+        com.github.IsmaelMartinez.teams_for_linux \
+        com.umlet.Umlet \
+        com.discordapp.Discord \
+        io.dbeaver.DBeaverCommunity \
+        us.zoom.Zoom
+
+    # --------------------------------------------------------
+    # JetBrains Toolbox
+    # --------------------------------------------------------
+
+    echo "Installing JetBrains Toolbox..."
+
+    TOOLBOX_DIR="$HOME/.local/share/JetBrains/Toolbox-App"
+
+    if [[ ! -x "$TOOLBOX_DIR/bin/jetbrains-toolbox" ]]; then
+        mkdir -p "$TOOLBOX_DIR"
+
+        TOOLBOX_ARCHIVE="$(mktemp --suffix=.tar.gz)"
+
+        curl -L \
+            "https://data.services.jetbrains.com/products/download?code=TBA&platform=linux" \
+            -o "$TOOLBOX_ARCHIVE"
+
+        tar -xzf "$TOOLBOX_ARCHIVE" \
+            --strip-components=1 \
+            -C "$TOOLBOX_DIR"
+
+        rm -f "$TOOLBOX_ARCHIVE"
+
+		"$TOOLBOX_DIR/bin/jetbrains-toolbox" >/dev/null 2>&1 &
+        echo "JetBrains Toolbox installed."
+    else
+        echo "JetBrains Toolbox already installed."
+    fi
+
+    # --------------------------------------------------------
+    # SSH configuration
+    # --------------------------------------------------------
+
+    SSH_CONFIG="$REPO_DIR/config/ssh/${ROLE}.conf"
+
+    if [[ -f "$SSH_CONFIG" ]]; then
+        echo "Installing SSH configuration..."
+
+        mkdir -p "$HOME/.ssh"
+        cp "$SSH_CONFIG" "$HOME/.ssh/config"
+
+        chmod 700 "$HOME/.ssh"
+        chmod 600 "$HOME/.ssh/config"
+    fi
+
+    # --------------------------------------------------------
+    # Bluetooth configuration
+    # --------------------------------------------------------
+
+    BLUETOOTH_SCRIPT="$REPO_DIR/scripts/fix-bluetooth-audio.sh"
+
+    if [[ -f "$BLUETOOTH_SCRIPT" ]]; then
+        echo "Applying Bluetooth audio configuration..."
+        chmod +x "$BLUETOOTH_SCRIPT"
+        "$BLUETOOTH_SCRIPT"
+    fi
 fi
 
-# 8. Docker
-echo "Setting up Docker..."
-sudo systemctl enable --now docker
-sudo usermod -aG docker "$USER"
+# ------------------------------------------------------------
+# Role-specific configuration
+# ------------------------------------------------------------
 
-# 9. Hardware-specific scripts
-HOST_SCRIPT="./hosts/fedora/${CHASSIS}.sh"
+ROLE_SCRIPT="$REPO_DIR/hosts/fedora/${ROLE}.sh"
 
-if [[ -f "$HOST_SCRIPT" ]]; then
-  chmod +x "$HOST_SCRIPT"
-  "$HOST_SCRIPT"
-else
-  echo "No Fedora host script found for chassis: $CHASSIS"
+if [[ ! -f "$ROLE_SCRIPT" ]]; then
+    echo "Error: role configuration not found:"
+    echo "$ROLE_SCRIPT"
+    exit 1
 fi
 
-# 10. University aliases
-ALIASES=(
-  "alias uni-pull='rsync -avzu --no-perms --no-owner --no-group --exclude=\".conda/\" /mnt/proxmox_uni/ ~/Documents/University/'"
-  "alias uni-push='rsync -avzu --no-perms --no-owner --no-group --exclude=\".conda/\" ~/Documents/University/ /mnt/Synology_Home/Documents/University/University/'"
-  "alias uni-status='mutagen sync list && echo \"--- Hub Connectivity ---\" && ping -c 1 100.70.100.118 | grep \"time=\"'"
-)
+echo "Running Fedora $ROLE configuration..."
 
-for shell_rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-  touch "$shell_rc"
-  for line in "${ALIASES[@]}"; do
-    grep -qF "$line" "$shell_rc" || echo "$line" >> "$shell_rc"
-  done
-done
+chmod +x "$ROLE_SCRIPT"
+"$ROLE_SCRIPT"
 
-# 11. Mutagen sync
-if command -v mutagen >/dev/null 2>&1; then
-  SESSION_NAME="uni-sync-$(hostname)"
-  HUB_IP="100.99.160.1"
+# ------------------------------------------------------------
+# Complete
+# ------------------------------------------------------------
 
-  mutagen daemon start 2>/dev/null || true
-  mutagen sync terminate "$SESSION_NAME" 2>/dev/null || true
-
-  if ping -c 1 "$HUB_IP" >/dev/null 2>&1; then
-    mutagen sync create --name="$SESSION_NAME" \
-      "$HOME/Documents/University" \
-      "michael@$HUB_IP:~/University"
-    echo "Mutagen sync session '$SESSION_NAME' created."
-  else
-    echo "Warning: could not reach Hub ($HUB_IP). Mutagen session will need manual start."
-  fi
-else
-  echo "Mutagen not installed. Skipping Mutagen sync setup."
-fi
-
-# 12. Dual-NAS fstab setup
-sudo mkdir -p /mnt/proxmox /mnt/proxmox_uni /mnt/nas /mnt/Synology_Homes /mnt/Synology_Home
-
-PVE_UNI="100.70.100.118:/home/michael/University /mnt/proxmox_uni nfs rw,_netdev,x-systemd.automount,noauto,soft,timeo=14 0 0"
-NAS_HOMES="100.99.160.1:/volume1/homes /mnt/Synology_Homes nfs nfsvers=3,nolock,tcp,rw,_netdev,x-systemd.automount,noauto,soft,timeo=14 0 0"
-NAS_BIND="/mnt/Synology_Homes/Michael /mnt/Synology_Home none bind,x-systemd.automount,noauto,x-systemd.requires=/mnt/Synology_Homes 0 0"
-
-for entry in "$PVE_UNI" "$NAS_HOMES" "$NAS_BIND"; do
-  grep -qF "$entry" /etc/fstab || echo "$entry" | sudo tee -a /etc/fstab >/dev/null
-done
-
-sudo systemctl daemon-reload
-
-# 13. Discord native update-fix, harmless if using Flatpak too
-mkdir -p "$HOME/.config/discord"
-echo '{"SKIP_HOST_UPDATE": true}' > "$HOME/.config/discord/settings.json"
-
-# 14. Optional Bluetooth audio script
-if [[ -f "./fix-bluetooth-audio.sh" ]]; then
-  echo "Launching Bluetooth audio fixes..."
-  chmod +x ./fix-bluetooth-audio.sh
-  ./fix-bluetooth-audio.sh
-fi
-
-echo "Fedora setup complete. Reboot or log out/in so Docker group membership applies."
+echo
+echo "NOTE: ProjectLibre is not installed automatically."
+echo "Install the ProjectLibre RPM manually if required for coursework."
+echo "Fedora $ROLE setup complete."

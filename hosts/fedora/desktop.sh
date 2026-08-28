@@ -3,20 +3,19 @@
 
 set -euo pipefail
 
-echo "Configuring Fedora desktop for NVIDIA, gaming, and university workflow..."
+
 
 # NVIDIA + CUDA support from RPM Fusion.
 # Assumes RPM Fusion free/nonfree repos were already enabled by setup-fedora.sh.
 sudo dnf install -y \
-  akmod-nvidia \
-  xorg-x11-drv-nvidia-cuda \
-  xorg-x11-drv-nvidia-cuda-libs \
-  nvidia-settings \
-  kernel-devel \
-  kernel-headers \
-  gcc \
-  make \
-  direnv
+    akmod-nvidia \
+    xorg-x11-drv-nvidia-cuda \
+    xorg-x11-drv-nvidia-cuda-libs \
+    nvidia-settings \
+    kernel-devel \
+    kernel-headers \
+    gcc \
+    make
 
 echo "Configuring NVIDIA power management..."
 
@@ -27,9 +26,52 @@ fi
 # These services exist once the NVIDIA RPM Fusion packages are installed.
 sudo systemctl enable nvidia-hibernate.service nvidia-resume.service nvidia-suspend.service 2>/dev/null || true
 
-echo "Creating local university folders..."
-mkdir -p "/mnt/Data/University"
-mkdir -p "$HOME/Synology_Home"
+# ------------------------------------------------------------
+# Data drive
+# ------------------------------------------------------------
+
+DATA_MOUNT="/mnt/Data"
+DATA_UUID="5ae96703-ba78-4401-9c92-9d06dd52589d"
+
+echo "Configuring data drive..."
+
+sudo mkdir -p "$DATA_MOUNT"
+
+if ! blkid -U "$DATA_UUID" >/dev/null 2>&1; then
+    echo "WARNING: Data drive with UUID $DATA_UUID was not found."
+    echo "Skipping automatic mount."
+else
+    DATA_DEVICE="$(blkid -U "$DATA_UUID")"
+
+    if ! grep -q "UUID=$DATA_UUID" /etc/fstab; then
+        echo "Adding data drive to /etc/fstab..."
+
+        FILESYSTEM="$(lsblk -no FSTYPE "$DATA_DEVICE")"
+
+        echo "UUID=$DATA_UUID $DATA_MOUNT $FILESYSTEM defaults,nofail 0 0" \
+            | sudo tee -a /etc/fstab >/dev/null
+    else
+        echo "Data drive already exists in /etc/fstab."
+    fi
+
+    if ! mountpoint -q "$DATA_MOUNT"; then
+        echo "Mounting $DATA_MOUNT..."
+        sudo mount "$DATA_MOUNT"
+    else
+        echo "$DATA_MOUNT is already mounted."
+    fi
+fi
+
+MOUNTED_UUID="$(findmnt -no UUID "$DATA_MOUNT" 2>/dev/null || true)"
+
+if mountpoint -q "$DATA_MOUNT" && [[ "$MOUNTED_UUID" == "$DATA_UUID" ]]; then
+    echo "Creating local university folder..."
+    sudo mkdir -p "$DATA_MOUNT/University"
+    sudo chown "$USER:$USER" "$DATA_MOUNT/University"
+else
+    echo "WARNING: $DATA_MOUNT is not mounted with the expected data drive (UUID $DATA_UUID)."
+    echo "University directory was not created."
+fi
 
 if command -v powerprofilesctl >/dev/null 2>&1; then
   powerprofilesctl set performance || true
@@ -46,6 +88,16 @@ if systemctl list-unit-files | grep -q '^openrgb\.service'; then
   sudo systemctl enable --now openrgb.service
 fi
 
+echo "Installing gaming performance tools..."
+sudo dnf install -y gamemode
+
+echo "Installing Podman container tooling..."
+
+sudo dnf install -y \
+    podman \
+    podman-compose \
+    podman-docker
+
 echo "Desktop hardware configuration complete."
 
 echo "Building NVIDIA kernel modules..."
@@ -55,12 +107,5 @@ echo "Regenerating initramfs..."
 sudo dracut --force || true
 
 echo
-echo "NVIDIA setup is complete."
-echo "A reboot is recommended so Fedora loads the NVIDIA driver cleanly."
-read -rp "Reboot now? [y/N]: " REBOOT_NOW
-
-if [[ "$REBOOT_NOW" =~ ^[Yy]$ ]]; then
-  sudo reboot
-else
-  echo "Reboot skipped. Please reboot later before testing gaming/Proton/NVIDIA workloads."
-fi
+echo "NVIDIA setup complete."
+echo "A reboot is recommended before testing NVIDIA, gaming, or Proton workloads."

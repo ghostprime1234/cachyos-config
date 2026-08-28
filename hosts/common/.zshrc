@@ -8,25 +8,17 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
-source /usr/share/cachyos-zsh-config/cachyos-config.zsh
-source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-
-# 0. CACHYOS INTEGRATION
-# Note: Zsh doesn't use the fish-config, but CachyOS has zsh defaults too.
-[[ -f /usr/share/zsh/scripts/antidote/antidote.zsh ]] && source /usr/share/zsh/scripts/antidote/antidote.zsh
+# Resolve the configuration repository from this symlinked .zshrc.
+REPO_DIR="${${(%):-%x}:A:h:h:h}"
 
 # 1. ALIASES
 alias resource='source ~/.zshrc'
 alias zshrc='micro ~/.zshrc'
 alias obsidian='obsidian --enable-features=UseOzonePlatform --ozone-platform=wayland'
 
-alias mds-bak="sh ~/scripts/mds_backup.sh"
-alias uni-pull='rsync -avzu --no-perms --no-owner --no-group --exclude=".conda/" /mnt/proxmox_uni/ ~/Documents/University/'
-alias uni-push='rsync -avzu --no-perms --no-owner --no-group --exclude=".conda/" ~/Documents/University/ /mnt/Synology_Home/Documents/University/University/'
-alias uni-status='mutagen sync list && echo "--- Hub Connectivity ---" && ping -c 1 100.70.100.118 | grep "time="'
+alias mds-bak="$REPO_DIR/scripts/mds_backup.sh"
+alias mds-pull="$REPO_DIR/scripts/mds_pull.sh"
 alias unisync='/usr/local/bin/unisync'
-alias unilog='tail -f ~/cachyos-config/sync.log'
 
 alias lab-push="~/Big-Data-Cluster/infra/sync_labs.sh --push"
 alias lab-pull="~/Big-Data-Cluster/infra/sync_labs.sh --pull"
@@ -100,7 +92,7 @@ university_auto_env_sync() {
 
     # 3. ACTIVATION LOGIC
     if [[ -n "$subject_code" ]]; then
-        if [[ -d "$HOME/.conda/envs/$subject_code" ]]; then
+        if conda env list | awk '{print $1}' | grep -Fxq "$subject_code"; then
             [[ "$CONDA_DEFAULT_ENV" != "$subject_code" ]] && conda activate "$subject_code"
             return
         fi
@@ -132,8 +124,19 @@ spark-master() {
   docker exec -it spark-master \
     /opt/spark/bin/spark-submit "/course/${rel_dir}/$1"
 }
-# 7. THE FINAL WORD (Source p10k ONCE at the very end)
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+# 7. POWERLEVEL10K
+
+# Prefer the standard location managed by setup-fedora.sh.
+if [[ -r "$HOME/.local/share/powerlevel10k/powerlevel10k.zsh-theme" ]]; then
+    source "$HOME/.local/share/powerlevel10k/powerlevel10k.zsh-theme"
+
+# Temporary compatibility with the old CachyOS package.
+elif [[ -r /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme ]]; then
+    source /usr/share/zsh-theme-powerlevel10k/powerlevel10k.zsh-theme
+fi
+
+# Load Powerlevel10k configuration.
+[[ -f "$HOME/.p10k.zsh" ]] && source "$HOME/.p10k.zsh"
 
 export PATH="$HOME/.local/bin:$PATH"
 

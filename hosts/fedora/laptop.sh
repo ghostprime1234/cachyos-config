@@ -3,14 +3,6 @@
 
 set -euo pipefail
 
-echo "Tuning Fedora laptop for battery and data science mobility..."
-
-sudo dnf install -y \
-  direnv \
-  power-profiles-daemon
-
-sudo systemctl enable --now power-profiles-daemon
-
 echo "Checking IdeaPad battery conservation support..."
 
 CONSERVATION_PATH="/sys/bus/platform/drivers/ideapad_acpi/VPC2004:00/conservation_mode"
@@ -29,7 +21,7 @@ else
   fi
 fi
 
-echo "Configuring touchpad and power profile..."
+echo "Configuring touchpad..."
 
 mkdir -p "$HOME/.config"
 
@@ -37,11 +29,18 @@ if ! grep -q "TapToClick=true" "$HOME/.config/touchpadrc" 2>/dev/null; then
   echo "TapToClick=true" >> "$HOME/.config/touchpadrc"
 fi
 
-if command -v powerprofilesctl >/dev/null 2>&1; then
-  powerprofilesctl set balanced || true
+echo "Configuring power profile..."
+
+if command -v tuned-adm >/dev/null 2>&1 && sudo tuned-adm profile balanced; then
+  echo "TuneD profile set to balanced."
+elif command -v powerprofilesctl >/dev/null 2>&1; then
+  powerprofilesctl set balanced
+  echo "Power profile set to balanced."
+else
+  echo "No supported power profile manager found. Skipping."
 fi
 
+echo "Creating local university folder..."
 mkdir -p "$HOME/Documents/University"
-mkdir -p "$HOME/Synology_Home"
 
 echo "Laptop hardware configuration complete."
